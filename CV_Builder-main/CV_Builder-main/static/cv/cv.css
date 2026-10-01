@@ -217,6 +217,126 @@ ul.cv-desc li::marker { color: var(--accent); }
 .cv--compact .cv-side { background: var(--tint); padding: 16px 14px; border-radius: 8px; align-self: start; }
 .cv--compact .cv-item { margin-bottom: 8px; }
 
+/* ── 11. Bold ───────────────────────────────────────────── */
+.cv--bold { --pad-x: 56px; --pad-y: 54px; }
+.cv--bold .cv-head { padding-bottom: 20px; border-bottom: 6px solid var(--accent); }
+.cv--bold .cv-name { color: var(--ink); font-size: 3em; font-weight: 700; letter-spacing: -0.03em; line-height: 1; }
+.cv--bold .cv-headline { color: var(--accent); font-weight: 700; font-size: 1.2em; margin-top: 8px; }
+.cv--bold .cv-h { border: 0; padding: 0; color: var(--ink); font-size: 1.15em; letter-spacing: 0.02em !important; }
+.cv--bold .cv-h span { box-shadow: inset 0 -0.42em 0 color-mix(in srgb, var(--accent) 28%, white); }
+.cv--bold .cv-tags li { background: none; border: 1.5px solid var(--ink); font-weight: 500; }
+
+/* ── 12. Slate: dark sidebar ────────────────────────────── */
+.cv--slate { padding: 0; display: grid; grid-template-columns: 33% 1fr; grid-template-rows: auto 1fr; }
+.cv--slate .cv-body { display: contents; }
+.cv--slate .cv-head { grid-column: 1; grid-row: 1; background: var(--accent); color: #fff; margin: 0; padding: 48px 28px 18px; flex-direction: column; align-items: flex-start; gap: 16px; }
+.cv--slate .cv-id { flex: none; }
+.cv--slate .cv-name { color: #fff; font-size: 2.1em; }
+.cv--slate .cv-headline { color: rgba(255,255,255,0.8); }
+.cv--slate .cv-photo { width: 110px; height: 110px; border: 3px solid rgba(255,255,255,0.85); }
+.cv--slate .cv-photo--empty { background: rgba(255,255,255,0.15); color: #fff; }
+.cv--slate .cv-side { grid-column: 1; grid-row: 2; background: var(--accent); color: rgba(255,255,255,0.92); padding: 16px 28px 48px; }
+.cv--slate .cv-side .cv-h { color: #fff; border-color: rgba(255,255,255,0.35); border-bottom-width: 1px; }
+.cv--slate .cv-side .cv-ico { color: #fff; }
+.cv--slate .cv-side .cv-tag-level, .cv--slate .cv-side .cv-contact { color: rgba(255,255,255,0.75); }
+.cv--slate .cv-side .cv-ghost { color: rgba(255,255,255,0.5) !important; }
+.cv--slate .cv-main { grid-column: 2; grid-row: 1 / span 2; padding: 52px 46px 48px 38px; }
+.cv--slate .cv-main .cv-h { border-bottom-width: 1px; }
+
+/* ── 13. Academic: titles in a left column ──────────────── */
+.cv--academic { --pad-x: 60px; --pad-y: 56px; --sec-gap: 22px; }
+.cv--academic .cv-head { border-bottom: 1px solid var(--ink); padding-bottom: 16px; }
+.cv--academic .cv-name { color: var(--ink); font-weight: 700; font-size: 2.1em; }
+.cv--academic .cv-sec { display: grid; grid-template-columns: 21% minmax(0, 1fr); column-gap: 18px; }
+.cv--academic .cv-sec > * { grid-column: 2; }
+.cv--academic .cv-sec > .cv-h { grid-column: 1; grid-row: 1 / span 40; border: 0; padding: 2px 0 0; text-transform: none; letter-spacing: 0 !important; font-size: 0.98em; color: var(--accent); }
+.cv--academic .cv-tags li { background: none; padding: 0; }
+.cv--academic .cv-tags li:not(:last-child)::after { content: ";"; }
+.cv--academic ul.cv-desc li::marker { color: var(--ink-2); }
+
+/* ── 14. Fresh: soft section cards ──────────────────────── */
+.cv--fresh { --pad-x: 40px; --pad-y: 40px; --sec-gap: 12px; }
+.cv--fresh .cv-head { background: var(--tint); border-radius: 22px; padding: 28px 30px; margin-bottom: 14px; }
+.cv--fresh .cv-name { color: var(--ink); }
+.cv--fresh .cv-last { color: var(--accent); }
+.cv--fresh .cv-sec { border: 1.5px solid var(--tint); border-radius: 18px; padding: 16px 22px 18px; }
+.cv--fresh .cv-h { border: 0; padding: 0; color: var(--accent); text-transform: none; letter-spacing: 0 !important; font-size: 1.12em; }
+.cv--fresh .cv-tags li { background: var(--tint); }
+
+/* ── 15. Studio: editorial serif, slim sidebar ──────────── */
+.cv--studio { --pad-x: 50px; }
+.cv--studio .cv-head { flex-direction: row; gap: 26px; padding-bottom: 22px; border-bottom: 1px solid var(--rule); }
+.cv--studio .cv-name { color: var(--ink); font-weight: 500; font-size: 2.9em; letter-spacing: -0.01em; }
+.cv--studio .cv-last { font-style: italic; color: var(--accent); }
+.cv--studio .cv-photo { border-radius: 14px; width: 100px; height: 120px; }
+.cv--studio .cv-photo--empty { border-radius: 14px; }
+.cv--studio .cv-h { border: 0; padding: 0; text-transform: none; letter-spacing: 0 !important; font-style: italic; font-weight: 500; font-size: 1.35em; color: var(--accent); }
+.cv--studio .cv-body { gap: 30px; grid-template-columns: 28% minmax(0, 1fr); }
+.cv--studio .cv-side { border-right: 1px solid var(--rule); padding-right: 22px; }
+.cv--studio .cv-item-title { font-size: 1.05em; }
+
+/* ── 16. Corporate: top stripe, ruled sidebar ───────────── */
+.cv--corporate { padding-top: 0; }
+.cv--corporate .cv-head { margin: 0 calc(var(--pad-x) * -1) 26px; padding: 40px var(--pad-x) 22px; border-top: 12px solid var(--accent); background: #F6F7F9; }
+.cv--corporate .cv-name { font-size: 2.3em; }
+.cv--corporate .cv-h { border-bottom: 1px solid var(--rule); color: var(--accent); }
+.cv--corporate .cv-side { border-left: 3px solid var(--accent); padding-left: 18px; }
+.cv--corporate .cv-side .cv-h { border: 0; padding: 0; color: var(--ink); }
+
+/* ── 17. Nordic: tracked capitals, hairlines ────────────── */
+.cv--nordic { --pad-x: 70px; --pad-y: 64px; --sec-gap: 28px; color: #333; }
+.cv--nordic .cv-head { flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 36px; }
+.cv--nordic .cv-id { flex: none; }
+.cv--nordic .cv-name { color: var(--ink); font-weight: 400; font-size: 2.2em; text-transform: uppercase; letter-spacing: 0.22em; }
+.cv--nordic .cv-last { font-weight: 700; }
+.cv--nordic .cv-headline { color: var(--accent); letter-spacing: 0.06em; }
+.cv--nordic .cv-ico { display: none; }
+.cv--nordic .cv-h { font-weight: 500; font-size: 0.8em; letter-spacing: 0.3em !important; color: var(--accent); border-bottom: 0.5px solid #cfcfcf; padding-bottom: 6px; margin-bottom: 14px; }
+.cv--nordic .cv-item-title { font-weight: 600; }
+.cv--nordic .cv-item-sub { font-style: normal; }
+.cv--nordic .cv-tags li { background: none; padding: 0; }
+.cv--nordic .cv-tags li:not(:last-child)::after { content: "/"; margin-left: 8px; color: #bbb; }
+.cv--nordic ul.cv-desc li::marker { content: "– "; color: var(--accent); }
+
+/* ── 18. Consultant: split header, square markers ───────── */
+.cv--consultant .cv-head { flex-wrap: nowrap; align-items: flex-end; padding-bottom: 16px; border-bottom: 2px solid var(--ink); }
+.cv--consultant .cv-name { color: var(--ink); font-size: 2.3em; }
+.cv--consultant .cv-headline { color: var(--accent); font-weight: 600; }
+.cv--consultant .cv-contact { flex: 0 0 auto; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; }
+.cv--consultant .cv-contact li { flex-direction: row-reverse; }
+.cv--consultant .cv-h { border: 0; padding: 0; color: var(--ink); display: flex; align-items: center; gap: 10px; }
+.cv--consultant .cv-h::before { content: ""; width: 10px; height: 10px; background: var(--accent); }
+.cv--consultant .cv-h::after { content: ""; flex: 1; height: 1px; background: var(--rule); }
+.cv--consultant .cv-item-title { color: var(--accent); }
+.cv--consultant .cv-tags li { background: none; border-left: 3px solid var(--accent); border-radius: 0; padding: 0 8px; }
+
+/* ── 19. Mono ───────────────────────────────────────────── */
+.cv--mono { --pad-x: 58px; color: #111; }
+.cv--mono .cv-name { color: #111; font-family: var(--font-head); font-weight: 600; font-size: 2.1em; }
+.cv--mono .cv-headline { font-family: var(--font-head); font-size: 0.95em; }
+.cv--mono .cv-ico { color: #111; }
+.cv--mono .cv-h { font-family: var(--font-head); text-transform: lowercase; letter-spacing: 0 !important; font-weight: 600; color: #111; border-bottom: 1px dashed #111; }
+.cv--mono .cv-h span::before { content: "["; } .cv--mono .cv-h span::after { content: "]"; }
+.cv--mono .cv-item-meta { font-family: var(--font-head); font-size: 0.82em; color: #111; }
+.cv--mono .cv-tags li { background: none; border: 1px solid #111; border-radius: 2px; font-family: var(--font-head); font-size: 0.88em; }
+.cv--mono ul.cv-desc li::marker { content: "- "; color: #111; }
+
+/* ── 20. Ribbon: label headings ─────────────────────────── */
+.cv--ribbon .cv-head { margin-bottom: 26px; }
+.cv--ribbon .cv-name { color: var(--ink); }
+.cv--ribbon .cv-headline { display: inline-block; margin-top: 8px; padding: 3px 12px; border-radius: 999px; background: var(--tint); color: var(--accent); font-weight: 600; font-size: 1em; }
+.cv--ribbon .cv-h { border: 0; padding: 0; color: #fff; letter-spacing: 0.06em !important; }
+.cv--ribbon .cv-h span { display: inline-block; background: var(--accent); padding: 4px 14px 4px 12px; border-radius: 4px 999px 999px 4px; }
+.cv--ribbon .cv-tags li { background: var(--tint); }
+
+/* Cover letters for the grid-based templates use a simple banner instead */
+.cv-letter.cv--modern, .cv-letter.cv--slate { display: block; padding: 0; }
+.cv-letter.cv--modern .cv-body, .cv-letter.cv--slate .cv-body { display: block; padding: 30px 58px 48px; }
+.cv-letter.cv--modern .cv-head { padding: 50px 58px 20px; border-bottom: 8px solid var(--tint); }
+.cv-letter.cv--slate .cv-head { flex-direction: row; align-items: center; padding: 42px 58px 26px; }
+.cv-letter.cv--slate .cv-contact { color: rgba(255,255,255,0.85); }
+.cv-letter.cv--slate .cv-ico { color: #fff; }
+
 /* Scaled live previews (home, gallery) */
 .cv-mini { display: block; position: relative; overflow: hidden; width: 100%; background: #fff; pointer-events: none; }
 .cv-mini-inner { position: absolute; left: 0; top: 0; transform-origin: 0 0; }

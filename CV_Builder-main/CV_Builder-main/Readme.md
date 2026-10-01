@@ -1,21 +1,21 @@
 # CV Builders — CV & Cover Letter Builder
 
-Pick one of 10 templates, fill in your details, and watch your CV take shape on the page as you type. Change the template, colour, font, size or section order at any time without retyping anything, then download a PDF that looks exactly like the preview, an editable Word file, or a backup you can open again later.
+Pick one of 20 templates, fill in your details, and watch your CV take shape on the page as you type. Change the template, colour, font, size or section order at any time without retyping anything, then download a PDF that looks exactly like the preview, an editable Word file, or a backup you can open again later.
 
 ---
 
 ## Features
 
-- **10 templates in 5 styles** (Professional, Modern, Minimal, Creative, Classic), each previewed live with sample content on the home page and the `/templates` gallery.
+- **20 templates in 5 styles** (Professional, Modern, Minimal, Creative, Classic), each previewed live with sample content on the home page and the `/templates` gallery.
 - **Live, editable page.** The CV is drawn in the browser from a small JSON document. Click any part of the page to jump to its form.
-- **Design controls:** template, accent colour (swatches or any colour), 5 fonts, text size, spacing, A4 or US Letter, photo on/off.
+- **Design controls:** template, accent colour (swatches or any colour), 8 fonts, text size, spacing, A4 or US Letter, photo on/off.
 - **Flexible sections:** Profile, Experience, Education, Projects, Volunteering, Skills, Languages, Certifications, Awards, Interests and custom sections. Rename, hide, reorder by drag, and reorder entries.
 - **Several CVs at once:** rename, duplicate one for another job, start from an example, delete.
 - **CV strength meter** with the next most useful tip, linked to the right section.
 - **Undo / redo**, autosave in the browser, and a page-break marker with a page count.
 - **Cover letter** that reuses your details and design.
 - **Downloads:** PDF through the browser's print dialog (matches the preview), Word (.docx, a single-column ATS-friendly layout with your colour, font and section order), and a JSON backup.
-- **Optional AI helpers** (any OpenAI-compatible API): write a profile, improve or shorten an achievement, draft a cover letter. Hidden when no API key is set.
+- **AI writing assistant, bring your own key.** Visitors paste a key from Claude (Anthropic), OpenAI, Google Gemini or OpenRouter in *AI assistant*. It can write a profile, turn rough notes into achievements, improve or shorten text, suggest missing skills and draft the cover letter, all tailored to a pasted job advert. The key stays in the visitor's browser and is sent with each AI request only; the server never stores or logs it. Providers are a fixed allowlist, so the server never calls an arbitrary URL.
 
 ---
 
@@ -29,7 +29,7 @@ Pick one of 10 templates, fill in your details, and watch your CV take shape on 
 | Live thumbnails on home and gallery | `static/cv/mini.js` |
 | Editor (state, panels, preview, downloads) | `static/cv/editor.js`, `templates/editor.html` |
 | Word export | `resume_builder/services/docx_builder.py` → `POST /api/export/docx` |
-| AI helpers | `resume_builder/services/llm.py` → `/api/llm/*` |
+| AI helpers (Claude via the `anthropic` SDK, others via OpenAI-compatible APIs) | `resume_builder/services/llm.py` → `/api/llm/*` |
 
 Adding a template is two steps: add a `Template(...)` entry to the registry and a `.cv--<id>` block in `cv.css`.
 
@@ -49,9 +49,10 @@ Optional environment variables:
 
 ```bash
 SECRET_KEY=change-me-in-prod
-LLM_API_KEY=sk-...                       # leave blank to hide AI helpers
-LLM_BASE_URL=https://api.openai.com/v1   # or http://localhost:11434/v1 for Ollama
-LLM_MODEL=gpt-4o-mini
+# Optional site-wide AI key, used when a visitor hasn't added their own.
+LLM_PROVIDER=anthropic                   # anthropic | openai | gemini | openrouter
+LLM_API_KEY=...
+LLM_MODEL=                               # blank = the provider's default
 ```
 
 Run and test:

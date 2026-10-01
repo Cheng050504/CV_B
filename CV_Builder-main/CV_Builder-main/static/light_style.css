@@ -903,3 +903,29 @@ textarea.is-revealing { box-shadow: inset 0 0 0 1.5px var(--accent), 0 0 0 4px v
   .strength { padding: 8px 12px; gap: 6px; }
   .cv-switch-btn { padding: 12px; }
 }
+
+/* AI assistant */
+.sec-row[data-id="ai"] .sec-link::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 8px; border-radius: 50%; background: var(--line-strong); vertical-align: middle; }
+.sec-row[data-id="ai"].ai-on .sec-link::after { background: var(--sage); }
+.ai-status { font-size: 14px; color: var(--muted); margin-bottom: 16px; }
+.ai-status.ok { color: #5E7356; font-weight: 600; }
+.ai-msg { padding: 10px 14px; border-radius: 12px; font-size: 14px; margin-bottom: 16px; }
+.ai-msg.ok { background: var(--sage-soft); color: #44573D; }
+.ai-msg.bad { background: var(--danger-soft); color: var(--danger); }
+.seg-wrap .seg-btn { flex: 1 1 45%; }
+.key-row { display: flex; gap: 6px; align-items: center; }
+.key-row input { flex: 1; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; }
+.hint-inline { font-weight: 400; color: var(--muted); font-size: 12.5px; }
+label.check { flex-direction: row; align-items: center; gap: 10px; font-weight: 500; }
+label.check input { width: 18px; height: 18px; padding: 0; accent-color: var(--accent-strong); box-shadow: none; }
+.ai-actions { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
+.privacy { margin: 12px 0 24px; line-height: 1.5; }
+.job-group { padding-top: 20px; border-top: 1px solid var(--line); }
+.ai-can { padding: 16px 18px; border-radius: 16px; background: var(--accent-soft); font-size: 14px; color: var(--fg-2); margin-bottom: 8px; }
+.ai-can ul { margin: 8px 0 0 18px; display: flex; flex-direction: column; gap: 4px; }
+.ideas { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; }
+.ideas .hint { margin: 0 4px 0 0; }
+.idea { border: 0; border-radius: var(--r-pill); padding: 6px 12px; background: var(--sage-soft); color: #44573D; font: 500 13px/1.2 var(--font-body); cursor: pointer; transition: transform var(--t) var(--spring), background-color var(--t) var(--ease); }
+.idea:hover { background: #E1E9DC; transform: translateY(-1px); }
+.tpl-filter { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.tpl-filter .pill { padding: 6px 12px; font-size: 13px; }

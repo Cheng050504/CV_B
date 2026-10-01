@@ -77,6 +77,7 @@ def build():
         cv_meta=_cv_meta(),
         requested_template_id=tpl.id if requested == tpl.id else None,
         llm_enabled=llm.is_enabled(),
+        ai_providers=llm.public_providers(),
         title="Editor | CV Builders",
     )
 
@@ -108,67 +109,84 @@ def health():
 
 
 # ---------------------------------------------------------------------------
-# LLM endpoints
+# AI endpoints. The visitor's own key arrives in headers and is used for this
+# one call only; it is never stored or logged.
 # ---------------------------------------------------------------------------
+
+def _ai_config() -> llm.Config:
+    key = request.headers.get("X-AI-Key", "")
+    if key:
+        return llm.user_config(request.headers.get("X-AI-Provider", ""), key, request.headers.get("X-AI-Model"))
+    return llm.env_config()
+
+
+def _ai_call(fn):
+    """Run one AI helper with CSRF, key resolution and friendly errors."""
+    _validate_csrf()
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid payload"}), 400
+    try:
+        cfg = _ai_config()
+    except llm.LLMDisabled:
+        return jsonify({"error": "Add your AI key in AI assistant settings first.", "needsKey": True}), 401
+    except ValueError as e:
+        return jsonify({"error": str(e), "needsKey": True}), 400
+    try:
+        return jsonify({"result": fn(cfg, data)})
+    except llm.LLMError as e:
+        log.info("AI call failed: %s", type(e.__cause__).__name__ if e.__cause__ else "LLMError")
+        return jsonify({"error": str(e)}), 502
+
+
+def _job(data) -> str:
+    return str(data.get("job") or "")
+
 
 @bp.route("/api/llm/status")
 def llm_status():
-    return jsonify({"enabled": llm.is_enabled()})
+    return jsonify({"enabled": llm.is_enabled(), "providers": llm.public_providers()})
+
+
+@bp.route("/api/llm/test", methods=["POST"])
+def api_test_key():
+    return _ai_call(lambda cfg, data: llm.check_key(cfg))
 
 
 @bp.route("/api/llm/rewrite-bullet", methods=["POST"])
 def api_rewrite_bullet():
-    _validate_csrf()
-    if not llm.is_enabled():
-        return jsonify({"error": "AI is disabled — set LLM_API_KEY to enable."}), 503
-
     data = request.get_json(silent=True) or {}
-    text = (data.get("text") or "").strip()
-    role = (data.get("role") or "").strip() or None
-    mode = (data.get("mode") or "improve").strip()
+    text = str(data.get("text") or "").strip() if isinstance(data, dict) else ""
+    mode = str(data.get("mode") or "improve").strip() if isinstance(data, dict) else ""
     if mode not in llm.REWRITE_MODES:
+        _validate_csrf()
         return jsonify({"error": "Unknown mode"}), 400
-    if not text:
-        return jsonify({"error": "Empty input"}), 400
-    if len(text) > 4000:
-        return jsonify({"error": "Input too long (max 4000 chars)"}), 400
-    try:
-        out = llm.rewrite_bullet(text, role_context=role, mode=mode)
-    except llm.LLMError as e:
-        return jsonify({"error": str(e)}), 502
-    return jsonify({"result": out})
+    if not text or len(text) > 4000:
+        _validate_csrf()
+        return jsonify({"error": "Write something first (up to 4000 characters)."}), 400
+    return _ai_call(lambda cfg, d: llm.rewrite_bullet(
+        cfg, text, role_context=str(d.get("role") or "").strip() or None, mode=mode, job=_job(d)))
 
 
-@bp.route("/api/llm/draft-cover-letter", methods=["POST"])
-def api_draft_cover_letter():
-    _validate_csrf()
-    if not llm.is_enabled():
-        return jsonify({"error": "AI is disabled — set LLM_API_KEY to enable."}), 503
-
-    data = request.get_json(silent=True) or {}
-    if not isinstance(data, dict):
-        return jsonify({"error": "Invalid payload"}), 400
-    try:
-        out = llm.draft_cover_letter(data)
-    except llm.LLMError as e:
-        return jsonify({"error": str(e)}), 502
-    return jsonify({"result": out})
+@bp.route("/api/llm/write-bullets", methods=["POST"])
+def api_write_bullets():
+    return _ai_call(lambda cfg, d: llm.write_bullets(cfg, d.get("role"), d.get("org"), d.get("notes"), _job(d)))
 
 
 @bp.route("/api/llm/write-summary", methods=["POST"])
 def api_write_summary():
-    _validate_csrf()
-    if not llm.is_enabled():
-        return jsonify({"error": "AI is disabled — set LLM_API_KEY to enable."}), 503
-
     data = request.get_json(silent=True) or {}
-    if not isinstance(data, dict):
-        return jsonify({"error": "Invalid payload"}), 400
-    fields = [str(data.get(k) or "").strip() for k in ("headline", "experience", "skills")]
-    if not any(fields):
+    if isinstance(data, dict) and not any(str(data.get(k) or "").strip() for k in ("headline", "experience", "skills")):
+        _validate_csrf()
         return jsonify({"error": "Add a headline or some experience first, then try again."}), 400
-    try:
-        out = llm.write_summary(*fields)
-    except llm.LLMError as e:
-        return jsonify({"error": str(e)}), 502
-    return jsonify({"result": out})
+    return _ai_call(lambda cfg, d: llm.write_summary(cfg, d.get("headline"), d.get("experience"), d.get("skills"), _job(d)))
+
+
+@bp.route("/api/llm/suggest-skills", methods=["POST"])
+def api_suggest_skills():
+    return _ai_call(lambda cfg, d: llm.suggest_skills(cfg, d.get("headline"), d.get("experience"), d.get("have"), _job(d)))
+
+
+@bp.route("/api/llm/draft-cover-letter", methods=["POST"])
+def api_draft_cover_letter():
+    return _ai_call(lambda cfg, d: llm.draft_cover_letter(cfg, d))

@@ -188,8 +188,7 @@ def _letter(doc: Document, cv: Dict[str, Any], accent: RGBColor, base: float) ->
         re_line = doc.add_paragraph()
         re_line.add_run(f"Re: {_s(letter.get('role'))}").bold = True
         re_line.paragraph_format.space_after = Pt(10)
-    last = _s(letter.get("recipient")).split()[-1] if _s(letter.get("recipient")) else ""
-    doc.add_paragraph(f"Dear {last or 'Hiring Manager'},").paragraph_format.space_after = Pt(8)
+    doc.add_paragraph(f"Dear {_s(letter.get('recipient')) or 'Hiring Manager'},").paragraph_format.space_after = Pt(8)
     for para in re.split(r"\n\s*\n", _s(letter.get("body"))):
         if para.strip():
             doc.add_paragraph(para.strip()).paragraph_format.space_after = Pt(8)

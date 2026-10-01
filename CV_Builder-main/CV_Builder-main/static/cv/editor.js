@@ -71,6 +71,25 @@
 
   const cv = () => store.cvs[store.currentId];
 
+  /* ── AI settings: the visitor's own key stays in this browser ── */
+  const AI_KEY = 'cvb_ai_v1';
+  const PROVIDERS = CFG.aiProviders || [];
+  function loadAi() {
+    try { return JSON.parse(localStorage.getItem(AI_KEY) || sessionStorage.getItem(AI_KEY) || 'null') || {}; } catch (_) { return {}; }
+  }
+  let ai = loadAi();
+  function saveAi(next) {
+    ai = next || {};
+    try {
+      localStorage.removeItem(AI_KEY);
+      sessionStorage.removeItem(AI_KEY);
+      if (ai.key) (ai.remember ? localStorage : sessionStorage).setItem(AI_KEY, JSON.stringify(ai));
+    } catch (_) { /* private mode: key lives in memory for this visit */ }
+  }
+  const aiReady = () => !!(ai.key || CFG.serverAi);
+  const providerOf = id => PROVIDERS.find(p => p.id === id) || PROVIDERS[0] || { id: '', label: 'AI', model: '' };
+  let aiDraft = null, aiMsg = null, skillIdeas = [], tplFilter = 'All';
+
   /* ── Undo / redo ───────────────────────────────────────── */
   let undoStack = [], redoStack = [], lastSnap = null, snapTimer = null;
   function snapshotSoon() {
@@ -183,7 +202,9 @@
       ${navItem('personal', 'Personal details')}
       <div class="sec-list" id="secList">${c.sections.map(s => navItem(s.id, s.title, { drag: true, hidden: s.hidden })).join('')}</div>
       <button type="button" class="sec-add" data-open="add">+ Add section</button>
-      ${navItem('letter', 'Cover letter')}`;
+      ${navItem('letter', 'Cover letter')}
+      ${navItem('ai', 'AI assistant')}`;
+    $('.sec-row[data-id="ai"]').classList.toggle('ai-on', aiReady());
     enableSort($('#secList'), '.sec-row', (from, to) => {
       const arr = cv().sections;
       arr.splice(to, 0, arr.splice(from, 1)[0]);
@@ -209,7 +230,8 @@
   function open(id, opts) {
     active = id;
     if (id === 'letter') showDoc('letter');
-    else if (id !== 'design' && id !== 'add') showDoc('cv');
+    else if (id !== 'design' && id !== 'add' && id !== 'ai') showDoc('cv');
+    if (id === 'ai') { aiDraft = null; aiMsg = null; }
     renderNav();
     renderPanel(opts);
     closePreview();
@@ -223,6 +245,7 @@
     else if (active === 'personal') html = personalPanel();
     else if (active === 'letter') html = letterPanel();
     else if (active === 'add') html = addPanel();
+    else if (active === 'ai') html = aiPanel();
     else if (sec) html = sectionPanel(sec, opts && opts.openItem);
     else { active = 'personal'; html = personalPanel(); }
     panel.innerHTML = `<div class="panel-card">${html}</div>`;
@@ -249,8 +272,9 @@
     const tpls = (META.order || Object.keys(META.templates)).map(id => META.templates[id]);
     return `${panelHead('Design', 'Make it yours', 'Pick a template, then tune the colour, font and spacing. Your content stays the same.')}
       <div class="panel-body">
-        <div class="field-group"><div class="field-group-label">Template</div>
-          <div class="tpl-pick">${tpls.map(t => `
+        <div class="field-group"><div class="field-group-label">Template <span class="hint-inline">${tpls.length} to choose from</span></div>
+          <div class="tpl-filter">${['All', ...(META.categories || [])].map(c => `<button type="button" class="pill" aria-pressed="${tplFilter === c}" data-tpl-filter="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+          <div class="tpl-pick">${tpls.filter(t => tplFilter === 'All' || t.category === tplFilter || t.id === st.template).map(t => `
             <button type="button" class="tpl-pick-card ${st.template === t.id ? 'selected' : ''}" data-template="${esc(t.id)}" aria-pressed="${st.template === t.id}">
               <span class="cv-mini" data-template="${esc(t.id)}"></span>
               <span class="tpl-pick-name">${esc(t.name)}</span>
@@ -319,7 +343,7 @@
   }
 
   function aiChips(kind) {
-    if (!CFG.llmEnabled) return '';
+    if (kind === 'desc') return `<span class="ai-row"><button type="button" class="ai-chip" data-ai="bullets">${SPARKLE} Write it for me</button><button type="button" class="ai-chip" data-ai="improve">${SPARKLE} Improve this</button><button type="button" class="ai-chip" data-ai="concise">${SPARKLE} Make it more concise</button></span>`;
     if (kind === 'summary') return `<span class="ai-row"><button type="button" class="ai-chip" data-ai="summary">${SPARKLE} Help me write this</button><button type="button" class="ai-chip" data-ai="improve">${SPARKLE} Improve this</button></span>`;
     return `<span class="ai-row"><button type="button" class="ai-chip" data-ai="improve">${SPARKLE} Improve this</button><button type="button" class="ai-chip" data-ai="concise">${SPARKLE} Make it more concise</button></span>`;
   }
@@ -345,7 +369,9 @@
             ${def.fields[1] ? `<select data-item="${item.id}" data-k="level" aria-label="Level">${def.fields[1][3].map(o => `<option value="${esc(o)}" ${o === (item.level || '') ? 'selected' : ''}>${esc(o || 'Level')}</option>`).join('')}</select>` : ''}
             <button type="button" class="icon-btn remove" data-del-item="${item.id}" aria-label="Remove">✕</button>
           </div>`).join('')}</div>
-        <input class="quick-add" id="quickAdd" placeholder="Type ${esc(def.fields[0][1].toLowerCase())} and press Enter. Separate several with commas.">`;
+        <input class="quick-add" id="quickAdd" placeholder="Type ${esc(def.fields[0][1].toLowerCase())} and press Enter. Separate several with commas.">
+        ${sec.type === 'skills' ? `<div class="ai-row"><button type="button" class="ai-chip" data-ai="skills">${SPARKLE} Suggest skills</button></div>
+          ${skillIdeas.length ? `<div class="ideas"><span class="hint">Tap to add:</span>${skillIdeas.map(n => `<button type="button" class="idea" data-add-skill="${esc(n)}">+ ${esc(n)}</button>`).join('')}</div>` : ''}` : ''}`;
     } else {
       const openId = openItemId || (sec.items.length === 1 ? sec.items[0].id : null);
       body = `<div class="items">${sec.items.map((item, idx) => {
@@ -363,7 +389,7 @@
           </div>
           <div class="item-body"><div class="grid">${def.fields.map(([k, label, kind, ph]) =>
             kind === 'textarea'
-              ? field(label, `data-item="${item.id}" data-k="${k}"`, item[k] || '', 'textarea', { full: true, ph, after: k === 'description' && ['experience', 'projects', 'volunteering', 'custom'].includes(sec.type) ? aiChips() : '' })
+              ? field(label, `data-item="${item.id}" data-k="${k}"`, item[k] || '', 'textarea', { full: true, ph, after: k === 'description' && ['experience', 'projects', 'volunteering', 'custom'].includes(sec.type) ? aiChips('desc') : '' })
               : field(label, `data-item="${item.id}" data-k="${k}"`, item[k] || '', 'text', { ph })).join('')}</div></div>
         </div>`;
       }).join('')}</div>`;
@@ -392,10 +418,63 @@
       </div></div>`;
   }
 
+  function aiPanel() {
+    if (!aiDraft) aiDraft = { provider: ai.provider || (PROVIDERS[0] || {}).id, key: ai.key || '', model: ai.model || '', remember: ai.remember !== false };
+    const cur = providerOf(aiDraft.provider);
+    const connected = ai.key ? providerOf(ai.provider) : null;
+    const status = connected
+      ? `<p class="ai-status ok">✓ Connected to ${esc(connected.label)}${ai.model ? ` (${esc(ai.model)})` : ''}</p>`
+      : (CFG.serverAi ? '<p class="ai-status ok">✓ AI is switched on for this site. You can also use your own key.</p>' : '<p class="ai-status">Not set up yet. Add a key to turn on the ✨ buttons.</p>');
+    return `${panelHead('AI assistant', 'Let AI help with the words', 'Connect your own AI account. You pay the provider directly for what you use.')}
+      <div class="panel-body">
+        ${status}
+        ${aiMsg ? `<p class="ai-msg ${aiMsg.ok ? 'ok' : 'bad'}" role="status">${esc(aiMsg.text)}</p>` : ''}
+        <div class="field-group"><div class="field-group-label">Provider</div>
+          <div class="seg seg-wrap">${PROVIDERS.map(p => `<button type="button" class="seg-btn ${p.id === cur.id ? 'on' : ''}" data-ai-provider="${esc(p.id)}">${esc(p.label)}</button>`).join('')}</div>
+        </div>
+        <div class="grid">
+          <label class="full">API key
+            <span class="key-row"><input id="aiKey" type="password" autocomplete="off" spellcheck="false" value="${esc(aiDraft.key)}" placeholder="${esc(cur.key_hint)}">
+            <button type="button" class="btn ghost sm" id="aiShowKey">Show</button></span>
+            <span class="hint">Don't have one? <a href="${esc(cur.key_url)}" target="_blank" rel="noopener">Get a ${esc(cur.label)} key</a></span>
+          </label>
+          <label class="full"><span>Model <span class="hint-inline">(optional)</span></span><input id="aiModel" value="${esc(aiDraft.model)}" placeholder="${esc(cur.model)}" spellcheck="false"></label>
+          <label class="check full"><input type="checkbox" id="aiRemember" ${aiDraft.remember ? 'checked' : ''}> Remember my key on this device</label>
+        </div>
+        <div class="ai-actions">
+          <button type="button" class="btn primary" id="aiSave">Save and test</button>
+          ${ai.key ? '<button type="button" class="btn ghost sm danger" id="aiForget">Forget my key</button>' : ''}
+        </div>
+        <p class="hint privacy">Your key is kept only in this browser. When you ask for help it goes over HTTPS through our server to ${esc(cur.label)} for that one request. We never save or log it.</p>
+        <div class="field-group job-group"><div class="field-group-label">Tailor to a job <span class="hint-inline">(optional)</span></div>
+          ${field('Job advert', 'data-job', cv().job || '', 'textarea', { full: true, rows: 6, ph: 'Paste the job advert here. AI will tailor your profile, achievements, skills and cover letter to it.' })}
+        </div>
+        <div class="ai-can"><b>Where you'll find AI help</b>
+          <ul><li>Profile: write it for you, or improve yours</li><li>Experience and projects: turn rough notes into achievements, improve or shorten them</li><li>Skills: suggest skills you may have missed</li><li>Cover letter: draft it from your CV</li></ul>
+        </div>
+      </div>`;
+  }
+
+  async function saveAiSettings(btn) {
+    const draft = { provider: aiDraft.provider, key: aiDraft.key.trim(), model: aiDraft.model.trim(), remember: aiDraft.remember };
+    if (!draft.key) { aiMsg = { ok: false, text: 'Paste your API key first.' }; renderPanel({ keepScroll: true }); return; }
+    btn.disabled = true;
+    btn.textContent = 'Testing…';
+    try {
+      await postJSON('/api/llm/test', {}, draft);
+      saveAi(draft);
+      aiMsg = { ok: true, text: 'It works. Look for the ✨ buttons as you write.' };
+      renderNav();
+    } catch (err) {
+      aiMsg = { ok: false, text: err.message };
+    }
+    renderPanel();
+  }
+
   function letterPanel() {
     const l = cv().letter;
     const f = (k, label, ph, opts) => field(label, `data-l="${k}"`, l[k] || '', 'text', Object.assign({ ph }, opts));
-    const chips = CFG.llmEnabled ? `<span class="ai-row"><button type="button" class="ai-chip" data-ai="letter">${SPARKLE} Help me write this</button></span>` : '';
+    const chips = `<span class="ai-row"><button type="button" class="ai-chip" data-ai="letter">${SPARKLE} Write it for me</button></span>`;
     return `${panelHead('Cover letter', 'A letter that matches your CV', 'It uses your details and design automatically.')}
       <div class="panel-body"><div class="grid">
         ${f('role', 'Job you are applying for', 'Investment Banking Analyst', { full: true })}
@@ -412,6 +491,10 @@
   /* ── Panel events (delegated) ──────────────────────────── */
   panel.addEventListener('input', e => {
     const t = e.target, c = cv();
+    if (t.id === 'aiKey') { aiDraft.key = t.value; return; }
+    if (t.id === 'aiModel') { aiDraft.model = t.value; return; }
+    if (t.id === 'aiRemember') { aiDraft.remember = t.checked; return; }
+    if (t.hasAttribute('data-job')) { c.job = t.value.slice(0, 6000); changed(); return; }
     if (t.dataset.p) { c.personal[t.dataset.p] = t.value; changed(); }
     else if (t.dataset.l) { c.letter[t.dataset.l] = t.value; changed(); }
     else if (t.hasAttribute('data-sec-title')) {
@@ -435,7 +518,7 @@
       $$('.swatch.selected', panel).forEach(s => s.classList.remove('selected'));
     }
   });
-  panel.addEventListener('change', e => { if (e.target.tagName === 'SELECT') e.target.dispatchEvent(new Event('input', { bubbles: true })); });
+  panel.addEventListener('change', e => { if (e.target.id === 'aiRemember') aiDraft.remember = e.target.checked; if (e.target.tagName === 'SELECT') e.target.dispatchEvent(new Event('input', { bubbles: true })); });
 
   panel.addEventListener('keydown', e => {
     if (e.target.id !== 'quickAdd' || e.key !== 'Enter') return;
@@ -454,6 +537,18 @@
     if (!b) return;
     const c = cv(), st = c.style;
     const sec = c.sections.find(s => s.id === active);
+    if (b.dataset.aiProvider) { aiDraft.provider = b.dataset.aiProvider; if (aiDraft.provider !== ai.provider) { aiDraft.key = ''; aiDraft.model = ''; } aiMsg = null; renderPanel(); return; }
+    if (b.dataset.tplFilter) { tplFilter = b.dataset.tplFilter; renderPanel(); return; }
+    if (b.id === 'aiSave') { saveAiSettings(b); return; }
+    if (b.id === 'aiForget') { saveAi({}); aiDraft = null; aiMsg = { ok: true, text: 'Your key was removed from this browser.' }; renderNav(); renderPanel(); return; }
+    if (b.id === 'aiShowKey') { const k = $('#aiKey'); k.type = k.type === 'password' ? 'text' : 'password'; b.textContent = k.type === 'password' ? 'Show' : 'Hide'; return; }
+    if (b.dataset.addSkill) {
+      sec.items = sec.items.filter(i => String(i.name || '').trim());
+      sec.items.push({ id: E.uid(), name: b.dataset.addSkill, level: '' });
+      skillIdeas = skillIdeas.filter(n => n !== b.dataset.addSkill);
+      changed({ panel: true });
+      return;
+    }
     if (b.dataset.template) {
       const t = META.templates[b.dataset.template];
       switchTemplateAnimated(() => {
@@ -745,14 +840,17 @@
   });
 
   /* ── AI helpers ────────────────────────────────────────── */
-  async function postJSON(url, payload) {
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': $('#csrfToken').value },
-      body: JSON.stringify(payload),
-    });
+  async function postJSON(url, payload, keyOverride) {
+    const k = keyOverride || ai;
+    const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': $('#csrfToken').value };
+    if (k.key) Object.assign(headers, { 'X-AI-Provider': k.provider || '', 'X-AI-Key': k.key, 'X-AI-Model': k.model || '' });
+    const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
     const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+    if (!resp.ok) {
+      const err = new Error(data.error || `HTTP ${resp.status}`);
+      err.needsKey = !!data.needsKey;
+      throw err;
+    }
     return data.result;
   }
 
@@ -787,30 +885,52 @@
 
   async function runAI(btn) {
     const mode = btn.dataset.ai;
-    const ta = btn.closest('label').querySelector('textarea');
+    if (!aiReady()) {
+      open('ai', { keepScroll: true });
+      toast('Add your AI key once, then the ✨ buttons will work everywhere.');
+      return;
+    }
+    const label = btn.closest('label');
+    const ta = label ? label.querySelector('textarea') : null;
+    const job = cv().job || '';
     btn.disabled = true;
     btn.classList.add('is-thinking');
     try {
       let result;
+      if (mode === 'skills') {
+        const have = skillsDigest();
+        const ideas = await postJSON('/api/llm/suggest-skills', { headline: cv().personal.headline, experience: experienceDigest(), have, job });
+        skillIdeas = (ideas || []).filter(n => !have.toLowerCase().split(/,\s*/).includes(n.toLowerCase()));
+        if (!skillIdeas.length) toast('No new ideas this time. Your skills look well covered.');
+        renderPanel({ keepScroll: true });
+        return;
+      }
       if (mode === 'summary') {
-        result = await postJSON('/api/llm/write-summary', { headline: cv().personal.headline, experience: experienceDigest(), skills: skillsDigest() });
+        result = await postJSON('/api/llm/write-summary', { headline: cv().personal.headline, experience: experienceDigest(), skills: skillsDigest(), job });
       } else if (mode === 'letter') {
         const l = cv().letter, summary = (cv().sections.find(s => s.type === 'summary') || { items: [{}] }).items[0].text || '';
         result = await postJSON('/api/llm/draft-cover-letter', {
           position_name: l.role, company_name: l.company, background_summary: summary,
-          past_experience: experienceDigest(), gained_skills: skillsDigest(),
+          past_experience: experienceDigest(), gained_skills: skillsDigest(), job,
         });
         result = String(result).trim().split(/\n+/).join('\n\n');
+      } else if (mode === 'bullets') {
+        const card = btn.closest('.item-card');
+        const val = k => card ? (($(`[data-k="${k}"]`, card) || {}).value || '') : '';
+        result = await postJSON('/api/llm/write-bullets', { role: val('role') || val('name'), org: val('org'), notes: ta.value, job });
       } else {
         const text = (ta.value || '').trim();
-        if (!text) { ta.focus(); return; }
+        if (!text) { ta.focus(); toast('Write a few words first, then AI can polish them.'); return; }
         const card = btn.closest('.item-card');
         const role = card ? ($('[data-k="role"]', card) || {}).value || '' : '';
-        result = await postJSON('/api/llm/rewrite-bullet', { text, role, mode: mode === 'concise' ? 'concise' : 'improve' });
+        result = await postJSON('/api/llm/rewrite-bullet', { text, role, mode: mode === 'concise' ? 'concise' : 'improve', job });
       }
-      await revealInto(ta, result);
+      const before = ta.value;
+      await revealInto(ta, String(result).trim());
+      toast('Done. Edit it however you like.', 'Undo', () => { ta.value = before; ta.dispatchEvent(new Event('input', { bubbles: true })); });
     } catch (err) {
-      toast('Sorry, the AI could not help just now: ' + err.message);
+      if (err.needsKey) { open('ai', { keepScroll: true }); }
+      toast('The AI could not help just now: ' + err.message);
     } finally {
       btn.disabled = false;
       btn.classList.remove('is-thinking');

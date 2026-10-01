@@ -86,7 +86,8 @@
 {% block scripts %}
 <script>
   window.EDITOR_CONFIG = {
-    llmEnabled: {{ 'true' if llm_enabled else 'false' }},
+    serverAi: {{ 'true' if llm_enabled else 'false' }},
+    aiProviders: {{ ai_providers|tojson }},
     requestedTemplate: {{ requested_template_id|tojson }},
   };
 </script>

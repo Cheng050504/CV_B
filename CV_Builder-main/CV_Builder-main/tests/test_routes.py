@@ -5,6 +5,7 @@ import pytest
 from docx import Document
 
 from app import app
+from resume_builder.services import llm
 from resume_builder.templates_registry import list_templates
 
 
@@ -37,7 +38,7 @@ def _cv(**personal):
 
 def test_has_many_templates_across_categories():
     tpls = list_templates()
-    assert len(tpls) >= 10
+    assert len(tpls) >= 20
     assert len({t.category for t in tpls}) >= 5
 
 
@@ -115,6 +116,62 @@ def test_write_summary_needs_some_input(client, monkeypatch):
 
 def test_ai_flag_follows_api_key(client, monkeypatch):
     monkeypatch.delenv("LLM_API_KEY", raising=False)
-    assert "llmEnabled: false" in client.get("/build").get_data(as_text=True)
+    html = client.get("/build").get_data(as_text=True)
+    assert "serverAi: false" in html and '"id": "anthropic"' in html
     monkeypatch.setenv("LLM_API_KEY", "test")
-    assert "llmEnabled: true" in client.get("/build").get_data(as_text=True)
+    assert "serverAi: true" in client.get("/build").get_data(as_text=True)
+
+
+def _byok(client, provider="anthropic", key="sk-ant-test-key-123", model=""):
+    return {"X-CSRF-Token": _token(client), "X-AI-Provider": provider, "X-AI-Key": key, "X-AI-Model": model}
+
+
+def test_ai_without_any_key_asks_for_one(client, monkeypatch):
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    r = client.post("/api/llm/write-bullets", json={"role": "Analyst"}, headers={"X-CSRF-Token": _token(client)})
+    assert r.status_code == 401 and r.get_json()["needsKey"] is True
+
+
+def test_ai_uses_the_visitors_own_key(client, monkeypatch):
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    seen = {}
+
+    def fake_chat(cfg, system, user, **kw):
+        seen["cfg"], seen["user"] = cfg, user
+        return "Built models\nCut costs"
+
+    monkeypatch.setattr(llm, "_chat", fake_chat)
+    r = client.post("/api/llm/write-bullets", json={"role": "Analyst", "notes": "models", "job": "Bank analyst role"},
+                    headers=_byok(client))
+    assert r.status_code == 200 and r.get_json()["result"].startswith("Built")
+    assert seen["cfg"].kind == "anthropic" and seen["cfg"].api_key == "sk-ant-test-key-123"
+    assert seen["cfg"].model == "claude-opus-5-5"
+    assert "Bank analyst role" in seen["user"]
+
+
+def test_ai_model_override_and_openai_provider(client, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(llm, "_chat", lambda cfg, *a, **k: seen.setdefault("cfg", cfg) and "ok")
+    r = client.post("/api/llm/test", json={}, headers=_byok(client, "openrouter", "sk-or-abcdefgh", "meta/llama-3"))
+    assert r.status_code == 200
+    assert seen["cfg"].base_url == "https://openrouter.ai/api/v1" and seen["cfg"].model == "meta/llama-3"
+
+
+@pytest.mark.parametrize("provider,key,model", [("evil", "sk-abcdefgh", ""), ("openai", "short", ""), ("openai", "sk-abcdefgh", "bad model!")])
+def test_ai_rejects_bad_settings(client, provider, key, model):
+    r = client.post("/api/llm/test", json={}, headers=_byok(client, provider, key, model))
+    assert r.status_code == 400
+
+
+def test_suggest_skills_skips_ones_already_listed(client, monkeypatch):
+    monkeypatch.setattr(llm, "_chat", lambda *a, **k: "1. Excel, Python\n- Financial modelling, Bloomberg")
+    r = client.post("/api/llm/suggest-skills", json={"headline": "Analyst", "have": "Excel, python"}, headers=_byok(client))
+    assert r.get_json()["result"] == ["Financial modelling", "Bloomberg"]
+
+
+def test_ai_errors_are_friendly(client, monkeypatch):
+    def boom(*a, **k):
+        raise llm.LLMError("Claude rejected that API key. Check it in AI settings.")
+    monkeypatch.setattr(llm, "_chat", boom)
+    r = client.post("/api/llm/test", json={}, headers=_byok(client))
+    assert r.status_code == 502 and "rejected" in r.get_json()["error"]

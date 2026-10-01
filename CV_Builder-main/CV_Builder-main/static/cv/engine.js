@@ -265,7 +265,6 @@
     const ghost = !!opts.ghost;
     const name = [p.firstName, p.lastName].filter(Boolean).join(' ');
     const gh = (v, fb) => v ? esc(v) : (ghost ? `<span class="cv-ghost">${esc(fb)}</span>` : '');
-    const last = (l.recipient || '').trim().split(/\s+/).slice(-1)[0];
     const paras = String(l.body || '').split(/\n\s*\n/).map(t => t.trim()).filter(Boolean);
     const date = new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
     const style = [`--accent:${safeColor(st.accent)}`, `--font-body:${font.body}`, `--font-head:${font.head}`,
@@ -282,7 +281,7 @@
         <p class="cv-letter-date">${esc(date)}</p>
         <p class="cv-letter-to">${gh(l.recipient, 'Recipient name')}${l.recipientTitle ? '<br>' + esc(l.recipientTitle) : ''}<br>${gh(l.company, 'Company')}${l.address ? '<br>' + esc(l.address) : ''}</p>
         ${l.role ? `<p class="cv-letter-re"><strong>Re: ${esc(l.role)}</strong></p>` : ''}
-        <p>Dear ${l.recipient ? esc(last) : 'Hiring Manager'},</p>
+        <p>Dear ${l.recipient ? esc(l.recipient.trim()) : 'Hiring Manager'},</p>
         ${paras.length ? paras.map(t => `<p>${esc(t)}</p>`).join('') : (ghost ? '<p class="cv-ghost">Your letter goes here. Write it yourself, or let AI draft it from your CV.</p>' : '')}
         <p>${esc(l.signoff || 'Kind regards,')}<br>${esc(name)}</p>
       </div></div>

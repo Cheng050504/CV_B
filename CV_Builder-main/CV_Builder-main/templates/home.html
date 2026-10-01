@@ -31,11 +31,7 @@
           <div class="cv-mini" data-template="{{ t.id }}"></div>
         </div>
       {% endfor %}
-      {% if llm_enabled %}
-        <div class="paper-note">{{ sparkle() }} Improved 3 bullet points</div>
-      {% else %}
-        <div class="paper-note">{{ sparkle() }} Your draft saves as you type</div>
-      {% endif %}
+      <div class="paper-note">{{ sparkle() }} Improved 3 bullet points</div>
     </div>
   </div>
 </section>
@@ -103,7 +99,7 @@
             <div class="mini-field"></div>
             <div class="mini-field"></div>
             <div class="mini-field tall"></div>
-            {% if llm_enabled %}<span class="mini-ai">{{ sparkle() }} Improve this</span>{% endif %}
+            <span class="mini-ai">{{ sparkle() }} Improve this</span>
           </div>
         </div>
         <span class="how-num">02</span>
@@ -139,6 +135,7 @@
         ("What file formats do I get?", "A PDF that looks exactly like the preview, and an editable Word (.docx) file. You can also save a backup file and open it again later."),
         ("Is my information saved?", "Your CVs are saved only in your own browser, so you can come back to them on the same device. Nothing is stored on our server."),
         ("Can I make more than one CV?", "Yes. Keep a version for each kind of job: duplicate a CV, rename it and tailor it."),
+        ("How does the AI writing help work?", "Paste your own API key from Claude, OpenAI, Gemini or OpenRouter in AI assistant settings. It can draft your profile and achievements, polish or shorten what you wrote, suggest skills and write a cover letter, tailored to a job advert if you paste one. Your key stays in your browser and is only passed through to the provider when you ask for help. Usage is billed to your own account."),
         ("Can I make a CV with no work experience?", "Yes. Lead with your education, then add projects, volunteering and awards. Hide any section you don't need."),
       ] %}
       {% for q, a in faqs %}
