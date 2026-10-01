@@ -138,7 +138,7 @@ def draft_cover_letter(context: Dict[str, str]) -> str:
         "past_experience", "experience_theme", "gained_skills", "project",
         "project_result", "background_summary", "skill_summary",
     ]
-    ctx_lines = [f"- {k}: {context.get(k, '').strip()}" for k in relevant_keys if context.get(k, "").strip()]
+    ctx_lines = [f"- {k}: {str(context.get(k) or '').strip()[:2000]}" for k in relevant_keys if str(context.get(k) or "").strip()]
     if not ctx_lines:
         raise LLMError("Please fill in at least a few fields on this step first.")
 
@@ -147,4 +147,27 @@ def draft_cover_letter(context: Dict[str, str]) -> str:
         [{"role": "system", "content": system}, {"role": "user", "content": user}],
         temperature=0.55,
         max_tokens=500,
+    )
+
+
+def write_summary(headline: str = "", experience: str = "", skills: str = "") -> str:
+    """Draft a 2-3 sentence CV profile from what the user has already entered."""
+    parts = {
+        "Headline": str(headline or "").strip()[:200],
+        "Experience and education": str(experience or "").strip()[:3500],
+        "Skills": str(skills or "").strip()[:800],
+    }
+    lines = [f"{k}: {v}" for k, v in parts.items() if v]
+    if not lines:
+        raise LLMError("Add a headline or some experience first, then try again.")
+    system = (
+        "You write the short profile at the top of a CV. Write 2-3 sentences, "
+        "50-70 words, first person without using the word 'I' at the start, "
+        "specific to the facts given, no clichés, no emojis, no invented facts. "
+        "Return ONLY the profile text."
+    )
+    return _chat(
+        [{"role": "system", "content": system}, {"role": "user", "content": "\n".join(lines)}],
+        temperature=0.5,
+        max_tokens=250,
     )

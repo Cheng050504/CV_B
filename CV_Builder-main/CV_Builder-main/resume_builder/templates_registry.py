@@ -1,85 +1,83 @@
 """Template registry.
 
-Each entry defines one design that can drive both a CV and a Cover Letter.
-When a template's own DOCX isn't authored yet, it transparently falls back
-to the Finance template so the app stays functional.
+Each template is a look for the browser-drawn CV (see ``static/cv/engine.js``
+and ``static/cv/cv.css``). The registry is the single list the home page,
+the gallery and the editor all read; the editor receives it as JSON.
+
+``layout`` tells the engine where sections go:
+  * ``single``  one column
+  * ``side-left`` / ``side-right``  a narrow column holds the short lists
+    (skills, languages, interests, certifications)
 """
 
 from __future__ import annotations
 
-import os
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Dict, List, Optional
-
-
-BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-DOCX_TPL_DIR = os.path.join(BASE_DIR, "docx_templates")
 
 
 @dataclass(frozen=True)
 class Template:
     id: str
     name: str
+    category: str
     tagline: str
     description: str
-    icon: str
-    category: str
-    cv_filename: str
-    cl_filename: str
-    ready: bool
+    layout: str
+    accent: str
+    font: str
+    photo: bool = False
 
-    def cv_path(self) -> str:
-        path = os.path.join(DOCX_TPL_DIR, self.cv_filename)
-        if os.path.exists(path):
-            return path
-        return os.path.join(DOCX_TPL_DIR, "finance_resume.docx")
+    def to_dict(self) -> Dict[str, object]:
+        return asdict(self)
 
-    def cl_path(self) -> str:
-        path = os.path.join(DOCX_TPL_DIR, self.cl_filename)
-        if os.path.exists(path):
-            return path
-        return os.path.join(DOCX_TPL_DIR, "finance_cover_letter.docx")
 
+CATEGORIES = ["Professional", "Modern", "Minimal", "Creative", "Classic"]
+
+FONTS = {
+    "inter": {"label": "Inter", "body": "'Inter', Arial, sans-serif", "head": "'Inter', Arial, sans-serif", "docx": "Calibri"},
+    "jakarta": {"label": "Plus Jakarta", "body": "'Inter', Arial, sans-serif", "head": "'Plus Jakarta Sans', Arial, sans-serif", "docx": "Calibri"},
+    "lora": {"label": "Lora", "body": "'Lora', Georgia, serif", "head": "'Lora', Georgia, serif", "docx": "Georgia"},
+    "garamond": {"label": "Garamond", "body": "'EB Garamond', Garamond, Georgia, serif", "head": "'EB Garamond', Garamond, Georgia, serif", "docx": "Garamond"},
+    "plex": {"label": "IBM Plex", "body": "'IBM Plex Sans', Arial, sans-serif", "head": "'IBM Plex Mono', 'Courier New', monospace", "docx": "Arial"},
+}
 
 _TEMPLATES: List[Template] = [
-    Template(
-        id="finance",
-        name="Finance",
-        tagline="Investment Banking · Consulting · PE",
-        description="Classic Wall-Street style. Optimized for the WSO / IB resume format recruiters expect.",
-        icon="💼",
-        category="Professional",
-        cv_filename="finance_resume.docx",
-        cl_filename="finance_cover_letter.docx",
-        ready=True,
-    ),
-    Template(
-        id="tech",
-        name="Tech",
-        tagline="SWE · Product · Data",
-        description="Clean single-column layout with space for links, stack tags and quantified impact.",
-        icon="⚡",
-        category="Minimal",
-        cv_filename="tech_resume.docx",
-        cl_filename="tech_cover_letter.docx",
-        ready=True,
-    ),
-    Template(
-        id="generic",
-        name="Generic",
-        tagline="Works for any industry",
-        description="Conservative, ATS-friendly layout with no industry-specific sections.",
-        icon="📄",
-        category="Classic",
-        cv_filename="generic_resume.docx",
-        cl_filename="generic_cover_letter.docx",
-        ready=True,
-    ),
+    Template("clean", "Clean", "Professional", "Works for any role",
+             "A crisp single column with a coloured name and tidy section rules.",
+             "single", "#2F5D8A", "inter"),
+    Template("modern", "Modern", "Modern", "Sidebar for skills",
+             "A soft tinted sidebar keeps contacts and skills easy to scan.",
+             "side-left", "#3E7C6F", "jakarta", photo=True),
+    Template("minimal", "Minimal", "Minimal", "Quiet and airy",
+             "Dates in a left column and plenty of white space.",
+             "single", "#252525", "inter"),
+    Template("creative", "Creative", "Creative", "Warm and personal",
+             "A coral header with your photo and a two-column body.",
+             "side-right", "#E9785B", "jakarta", photo=True),
+    Template("classic", "Classic", "Classic", "Finance & consulting",
+             "Centred name, serif type and ruled headings, the traditional banking format.",
+             "single", "#111111", "garamond"),
+    Template("executive", "Executive", "Professional", "Senior roles",
+             "A deep header band with a confident, structured body.",
+             "single", "#1F3A5F", "lora"),
+    Template("timeline", "Timeline", "Creative", "Tell your story",
+             "Your experience laid out along a gentle timeline.",
+             "single", "#7A6FBF", "jakarta"),
+    Template("tech", "Tech", "Modern", "Engineering & data",
+             "Monospace headings and skill chips for technical roles.",
+             "side-right", "#2E7D5B", "plex"),
+    Template("elegant", "Elegant", "Classic", "Refined serif",
+             "Small caps, fine lines and a centred header.",
+             "single", "#8A6A4F", "lora"),
+    Template("compact", "Compact", "Minimal", "Fits more on one page",
+             "Tighter spacing and a slim sidebar for long histories.",
+             "side-left", "#4A5A6A", "inter"),
 ]
 
 _BY_ID: Dict[str, Template] = {t.id: t for t in _TEMPLATES}
 
-DEFAULT_TEMPLATE_ID = "finance"
+DEFAULT_TEMPLATE_ID = "clean"
 
 
 def list_templates() -> List[Template]:
@@ -90,3 +88,14 @@ def get_template(template_id: Optional[str]) -> Template:
     if template_id and template_id in _BY_ID:
         return _BY_ID[template_id]
     return _BY_ID[DEFAULT_TEMPLATE_ID]
+
+
+def featured_templates() -> List[Template]:
+    """One template per category, in category order, for the home page."""
+    picked: List[Template] = []
+    for cat in CATEGORIES:
+        for t in _TEMPLATES:
+            if t.category == cat:
+                picked.append(t)
+                break
+    return picked

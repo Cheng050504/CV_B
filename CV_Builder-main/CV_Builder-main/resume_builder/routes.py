@@ -1,20 +1,19 @@
 """HTTP routes.
 
-Key design: generated documents are returned to the browser as base64
-`data:` URIs embedded in the response HTML. Nothing is kept on the server
-between requests, so the app works correctly on serverless runtimes where
-``/tmp`` does **not** persist across invocations.
+The CV itself is drawn in the browser (static/cv/engine.js), so the PDF is
+printed client-side and matches the preview exactly. The server only builds
+the Word export from the same CV data and proxies the optional AI helpers.
+Nothing is stored on the server between requests.
 """
 
 from __future__ import annotations
 
-import base64
+import io
 import logging
-from flask import Blueprint, render_template, request, jsonify, flash, session, abort
+from flask import Blueprint, render_template, request, jsonify, session, abort, send_file
 
-from .templates_registry import list_templates, get_template, DEFAULT_TEMPLATE_ID
-from .services.docx_renderer import build_documents
-from .services.pdf_converter import docx_bytes_to_pdf_bytes
+from .templates_registry import CATEGORIES, FONTS, featured_templates, get_template, list_templates
+from .services.docx_builder import build_docx
 from .services import llm
 
 
@@ -24,7 +23,9 @@ bp = Blueprint("main", __name__)
 
 def _validate_csrf() -> None:
     """Abort 403 if the submitted csrf_token doesn't match the session token."""
-    token = request.form.get("csrf_token", "") or (request.get_json(silent=True) or {}).get("csrf_token", "")
+    token = (request.headers.get("X-CSRF-Token", "")
+             or request.form.get("csrf_token", "")
+             or (request.get_json(silent=True) or {}).get("csrf_token", ""))
     expected = session.get("_csrf", "")
     if not token or not expected or token != expected:
         abort(403)
@@ -32,26 +33,15 @@ def _validate_csrf() -> None:
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
-def _b64(data: bytes) -> str:
-    return base64.b64encode(data).decode("ascii")
-
-
-def _build(form):
-    tpl = get_template(form.get("template_id") or DEFAULT_TEMPLATE_ID)
-    result = build_documents(form, tpl.cv_path(), tpl.cl_path())
-
-    cv_pdf = docx_bytes_to_pdf_bytes(result["cv_docx_bytes"], basename=result["cv_filename_base"])
-    cl_pdf = docx_bytes_to_pdf_bytes(result["cl_docx_bytes"], basename=result["cl_filename_base"])
-
+def _cv_meta():
+    """Template + font metadata the browser engine needs, as plain dicts."""
     return {
-        "template": tpl,
-        "cv_filename_base": result["cv_filename_base"],
-        "cl_filename_base": result["cl_filename_base"],
-        "cv_docx_b64": _b64(result["cv_docx_bytes"]),
-        "cl_docx_b64": _b64(result["cl_docx_bytes"]),
-        "cv_pdf_b64": _b64(cv_pdf) if cv_pdf else None,
-        "cl_pdf_b64": _b64(cl_pdf) if cl_pdf else None,
-        "pdf_ok": bool(cv_pdf and cl_pdf),
+        "templates": {t.id: t.to_dict() for t in list_templates()},
+        "fonts": FONTS,
+        "categories": CATEGORIES,
+        # tojson sorts dict keys, so keep the curated order separately.
+        "order": [t.id for t in list_templates()],
+        "fontOrder": list(FONTS),
     }
 
 
@@ -59,8 +49,21 @@ def _build(form):
 def index():
     return render_template(
         "home.html",
-        templates=list_templates(),
+        templates=featured_templates(),
+        template_count=len(list_templates()),
+        cv_meta=_cv_meta(),
         llm_enabled=llm.is_enabled(),
+    )
+
+
+@bp.route("/templates")
+def gallery():
+    return render_template(
+        "gallery.html",
+        templates=list_templates(),
+        categories=CATEGORIES,
+        cv_meta=_cv_meta(),
+        title="CV templates | CV Builders",
     )
 
 
@@ -69,44 +72,34 @@ def build():
     requested = request.args.get("template")
     tpl = get_template(requested)
     return render_template(
-        "form.html",
+        "editor.html",
         templates=list_templates(),
-        default_template_id=tpl.id,
+        cv_meta=_cv_meta(),
         requested_template_id=tpl.id if requested == tpl.id else None,
         llm_enabled=llm.is_enabled(),
+        title="Editor | CV Builders",
     )
 
 
-@bp.route("/generate", methods=["POST"])
-def generate():
+@bp.route("/api/export/docx", methods=["POST"])
+def export_docx():
     _validate_csrf()
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not isinstance(data.get("cv"), dict):
+        return jsonify({"error": "Invalid payload"}), 400
+    doc_kind = data.get("doc", "cv")
+    if doc_kind not in ("cv", "letter"):
+        return jsonify({"error": "Unknown document"}), 400
     try:
-        ctx = _build(request.form)
-    except FileNotFoundError as e:
-        log.exception("Template file missing")
-        flash(f"Template file is missing on the server: {e}", "error")
-        return render_template(
-            "form.html",
-            templates=list_templates(),
-            default_template_id=DEFAULT_TEMPLATE_ID,
-            llm_enabled=llm.is_enabled(),
-        ), 500
-
-    if not ctx["pdf_ok"]:
-        flash("PDF export is not available in this environment — your DOCX files are ready to download.", "warning")
-
-    return render_template("success.html", **ctx)
-
-
-@bp.route("/preview", methods=["POST"])
-def preview():
-    _validate_csrf()
-    try:
-        ctx = _build(request.form)
-    except FileNotFoundError as e:
-        log.exception("Template file missing")
-        return f"Template file missing: {e}", 500
-    return render_template("preview.html", **ctx)
+        payload, filename = build_docx(data["cv"], doc_kind)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    return send_file(
+        io.BytesIO(payload),
+        mimetype=DOCX_MIME,
+        as_attachment=True,
+        download_name=filename,
+    )
 
 
 @bp.route("/health")
@@ -157,6 +150,25 @@ def api_draft_cover_letter():
         return jsonify({"error": "Invalid payload"}), 400
     try:
         out = llm.draft_cover_letter(data)
+    except llm.LLMError as e:
+        return jsonify({"error": str(e)}), 502
+    return jsonify({"result": out})
+
+
+@bp.route("/api/llm/write-summary", methods=["POST"])
+def api_write_summary():
+    _validate_csrf()
+    if not llm.is_enabled():
+        return jsonify({"error": "AI is disabled — set LLM_API_KEY to enable."}), 503
+
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid payload"}), 400
+    fields = [str(data.get(k) or "").strip() for k in ("headline", "experience", "skills")]
+    if not any(fields):
+        return jsonify({"error": "Add a headline or some experience first, then try again."}), 400
+    try:
+        out = llm.write_summary(*fields)
     except llm.LLMError as e:
         return jsonify({"error": str(e)}), 502
     return jsonify({"result": out})
