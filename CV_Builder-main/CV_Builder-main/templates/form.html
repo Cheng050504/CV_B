@@ -4,8 +4,8 @@
 
 <!-- Page intro -->
 <div class="page-intro">
-  <h1>Build Your CV &amp; Cover Letter</h1>
-  <p>Pick a template, fill 5 short steps, and download a polished document in seconds.</p>
+  <h1>Build your CV &amp; cover letter</h1>
+  <p>Fill in 5 short steps, then download your CV and cover letter.</p>
 </div>
 
 <!-- Template chooser -->
@@ -20,7 +20,7 @@
           form="cvForm"
           {% if t.id == default_template_id %}checked{% endif %}
           {% if not t.ready %}disabled{% endif %}>
-        <span class="tpl-icon">{{ t.icon }}</span>
+        <img class="tpl-thumb" src="{{ url_for('static', filename='img/templates/' ~ t.id ~ '.png') }}" alt="" width="64" height="83">
         <span class="tpl-body">
           <span class="tpl-name">
             {{ t.name }}
@@ -680,6 +680,12 @@ document.getElementById('cvForm').addEventListener('submit', () => {
     statusEl.textContent = 'Draft restored';
   } else {
     addEdu(); addExp();
+  }
+  // A template picked on the home page wins over the one saved in the draft.
+  const requested = {{ requested_template_id|tojson }};
+  if (requested) {
+    const r = document.querySelector(`input[name="template_id"][value="${requested}"]`);
+    if (r && !r.disabled) { r.checked = true; r.dispatchEvent(new Event('change')); }
   }
 })();
 </script>

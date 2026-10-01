@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block body_class %}home{% endblock %}
+
+{% block content %}
+
+<!-- Hero -->
+<section class="hero">
+  <div class="container hero-inner">
+    <div class="hero-copy">
+      <h1>Create a professional CV in minutes.</h1>
+      <p class="hero-sub">Choose a template, fill in 5 short steps and download your CV and a matching cover letter. Free, with no sign-up.</p>
+      <div class="hero-actions">
+        <a class="btn primary lg" href="{{ url_for('main.build') }}">Build my CV</a>
+        <a class="btn lg" href="#templates">See templates</a>
+      </div>
+      <ul class="hero-points">
+        <li>Free to use</li>
+        <li>No account needed</li>
+        <li>Editable Word download</li>
+      </ul>
+    </div>
+    <div class="hero-visual" aria-hidden="true">
+      {% for t in templates[:2] %}
+        <img src="{{ url_for('static', filename='img/templates/' ~ t.id ~ '.png') }}" alt="" width="640" height="828" class="hero-page hero-page-{{ loop.index }}">
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- Template gallery -->
+<section class="section" id="templates">
+  <div class="container wide">
+    <div class="section-head">
+      <h2>CV templates</h2>
+      <p>Each template comes with a matching cover letter. Pick one to start; you can switch at any time.</p>
+    </div>
+    <div class="gallery">
+      {% for t in templates %}
+        <a class="gallery-card" href="{{ url_for('main.build', template=t.id) }}">
+          <span class="gallery-thumb">
+            <img src="{{ url_for('static', filename='img/templates/' ~ t.id ~ '.png') }}" alt="Preview of the {{ t.name }} CV template" width="640" height="828" loading="lazy">
+            <span class="gallery-hover"><span class="btn primary">Use this template</span></span>
+          </span>
+          <span class="gallery-meta">
+            <span class="gallery-name">{{ t.name }}</span>
+            <span class="gallery-tagline">{{ t.tagline }}</span>
+            <span class="gallery-desc">{{ t.description }}</span>
+          </span>
+        </a>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- How it works -->
+<section class="section section-tint">
+  <div class="container wide">
+    <div class="section-head">
+      <h2>How it works</h2>
+    </div>
+    <ol class="steps-row">
+      <li><span class="steps-num">1</span><h3>Pick a template</h3><p>Choose the layout that suits your industry.</p></li>
+      <li><span class="steps-num">2</span><h3>Fill in 5 steps</h3><p>Personal details, education, experience, skills and your cover letter.</p></li>
+      <li><span class="steps-num">3</span><h3>Download</h3><p>Get your CV and cover letter ready to send.</p></li>
+    </ol>
+  </div>
+</section>
+
+<!-- Features -->
+<section class="section" id="features">
+  <div class="container wide">
+    <div class="section-head">
+      <h2>Everything you need to apply</h2>
+    </div>
+    <div class="features">
+      <div class="feature">
+        <h3>Free download</h3>
+        <p>Download your CV and cover letter as Word files you can keep editing. No account, no payment.</p>
+      </div>
+      <div class="feature">
+        <h3>Cover letter included</h3>
+        <p>Every template has a matching cover letter, filled in from the same details.</p>
+      </div>
+      <div class="feature">
+        {% if llm_enabled %}
+          <h3>AI writing help</h3>
+          <p>Polish your experience bullets and draft your cover letter with one click.</p>
+        {% else %}
+          <h3>Saves as you type</h3>
+          <p>Your draft is kept in your browser, so you can close the tab and pick up later.</p>
+        {% endif %}
+      </div>
+      <div class="feature">
+        <h3>Recruiter-ready layouts</h3>
+        <p>Clean, ATS-friendly formatting for finance, tech or any other industry.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA band -->
+<section class="cta-band">
+  <div class="container wide cta-inner">
+    <div>
+      <h2>Ready to start your CV?</h2>
+      <p>Go from a blank page to finished documents in a few minutes.</p>
+    </div>
+    <a class="btn lg cta-btn" href="{{ url_for('main.build') }}">Get started</a>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="section" id="faq">
+  <div class="container">
+    <div class="section-head">
+      <h2>Frequently asked questions</h2>
+    </div>
+    <div class="faq">
+      <details>
+        <summary>Is CV Builders free?</summary>
+        <p>Yes. You can build and download your CV and cover letter without paying or creating an account.</p>
+      </details>
+      <details>
+        <summary>Which template should I choose?</summary>
+        <p>Use Finance for banking, consulting and private equity, Tech for software, product and data roles, and Generic for everything else. You can switch templates in the editor without losing what you've typed.</p>
+      </details>
+      <details>
+        <summary>What file formats do I get?</summary>
+        <p>You always get editable Word (.docx) files. When PDF export is available you'll also see PDF downloads; otherwise open the Word file and use Save as PDF.</p>
+      </details>
+      <details>
+        <summary>Is my information saved?</summary>
+        <p>Your draft is stored only in your own browser so you can come back to it. Documents are generated on the fly and are not kept on our server.</p>
+      </details>
+      <details>
+        <summary>Can I make a CV with no work experience?</summary>
+        <p>Yes. Lead with your education, then add clubs, volunteering, projects and part-time jobs in the experience step.</p>
+      </details>
+      <details>
+        <summary>Do I get a cover letter too?</summary>
+        <p>Yes. Step 5 asks a few questions about the role and fills in a cover letter that matches your CV template.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+{% endblock %}

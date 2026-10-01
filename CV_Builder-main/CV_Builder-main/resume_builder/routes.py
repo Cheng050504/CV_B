@@ -58,9 +58,21 @@ def _build(form):
 @bp.route("/")
 def index():
     return render_template(
+        "home.html",
+        templates=list_templates(),
+        llm_enabled=llm.is_enabled(),
+    )
+
+
+@bp.route("/build")
+def build():
+    requested = request.args.get("template")
+    tpl = get_template(requested)
+    return render_template(
         "form.html",
         templates=list_templates(),
-        default_template_id=DEFAULT_TEMPLATE_ID,
+        default_template_id=tpl.id,
+        requested_template_id=tpl.id if requested == tpl.id else None,
         llm_enabled=llm.is_enabled(),
     )
 

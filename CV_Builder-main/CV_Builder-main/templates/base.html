@@ -3,21 +3,27 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ title or "Resume Builder — CV & Cover Letter Generator" }}</title>
+  <meta name="description" content="{{ meta_description or 'Create a professional CV and cover letter in minutes. Pick a template, fill in 5 short steps, and download Word or PDF for free.' }}">
+  <title>{{ title or "CV Builders | Free CV & Cover Letter Builder" }}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='light_style.css') }}">
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
 
   <header class="site-header">
     <div class="container">
-      <a class="logo" href="{{ url_for('main.index') }}">
-        <div class="logo-icon">R</div>
-        <span class="logo-text">Resume Builder</span>
-        <span class="logo-badge">Beta</span>
+      <a class="logo" href="{{ url_for('main.index') }}" aria-label="CV Builders home">
+        <span class="logo-mark" aria-hidden="true">CV</span>
+        <span class="logo-text">CV Builders</span>
       </a>
+      <nav class="site-nav" aria-label="Main">
+        <a href="{{ url_for('main.index') }}#templates">Templates</a>
+        <a href="{{ url_for('main.index') }}#features">Features</a>
+        <a href="{{ url_for('main.index') }}#faq">FAQ</a>
+        <a class="btn primary sm nav-cta" href="{{ url_for('main.build') }}">Build my CV</a>
+      </nav>
     </div>
   </header>
 
@@ -38,7 +44,20 @@
 
   <footer class="site-footer">
     <div class="container">
-      <small>&copy; FlyFish</small>
+      <div class="footer-brand">
+        <a class="logo" href="{{ url_for('main.index') }}">
+          <span class="logo-mark" aria-hidden="true">CV</span>
+          <span class="logo-text">CV Builders</span>
+        </a>
+        <p>Free CV and cover letter builder. No sign-up needed.</p>
+      </div>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="{{ url_for('main.index') }}#templates">Templates</a>
+        <a href="{{ url_for('main.index') }}#features">Features</a>
+        <a href="{{ url_for('main.index') }}#faq">FAQ</a>
+        <a href="{{ url_for('main.build') }}">Build my CV</a>
+      </nav>
+      <small class="footer-copy">&copy; {{ current_year }} FlyFish. All rights reserved.</small>
     </div>
   </footer>
 

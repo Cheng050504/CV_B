@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import secrets
+from datetime import date
 from flask import Flask, session
 
 
@@ -37,5 +38,6 @@ def create_app() -> Flask:
     app.register_blueprint(main_bp)
 
     app.jinja_env.globals["csrf_token"] = _csrf_token
+    app.jinja_env.globals["current_year"] = date.today().year
 
     return app
