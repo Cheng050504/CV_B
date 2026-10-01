@@ -23,6 +23,7 @@ class Template:
     tagline: str
     description: str
     icon: str
+    category: str
     cv_filename: str
     cl_filename: str
     ready: bool
@@ -47,6 +48,7 @@ _TEMPLATES: List[Template] = [
         tagline="Investment Banking · Consulting · PE",
         description="Classic Wall-Street style. Optimized for the WSO / IB resume format recruiters expect.",
         icon="💼",
+        category="Professional",
         cv_filename="finance_resume.docx",
         cl_filename="finance_cover_letter.docx",
         ready=True,
@@ -57,6 +59,7 @@ _TEMPLATES: List[Template] = [
         tagline="SWE · Product · Data",
         description="Clean single-column layout with space for links, stack tags and quantified impact.",
         icon="⚡",
+        category="Minimal",
         cv_filename="tech_resume.docx",
         cl_filename="tech_cover_letter.docx",
         ready=True,
@@ -67,6 +70,7 @@ _TEMPLATES: List[Template] = [
         tagline="Works for any industry",
         description="Conservative, ATS-friendly layout with no industry-specific sections.",
         icon="📄",
+        category="Classic",
         cv_filename="generic_resume.docx",
         cl_filename="generic_cover_letter.docx",
         ready=True,

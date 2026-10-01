@@ -42,3 +42,18 @@ def test_generate_still_works(client):
     })
     assert r.status_code == 200
     assert "Your documents are ready" in r.get_data(as_text=True)
+
+
+def test_rewrite_rejects_unknown_mode(client, monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "test")
+    html = client.get("/build").get_data(as_text=True)
+    token = re.search(r'name="csrf_token" value="([^"]+)"', html).group(1)
+    r = client.post("/api/llm/rewrite-bullet", json={"csrf_token": token, "text": "Did things", "mode": "shout"})
+    assert r.status_code == 400
+
+
+def test_ai_chips_only_shown_when_enabled(client, monkeypatch):
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    assert "Help me write this" not in client.get("/build").get_data(as_text=True)
+    monkeypatch.setenv("LLM_API_KEY", "test")
+    assert "Help me write this" in client.get("/build").get_data(as_text=True)
