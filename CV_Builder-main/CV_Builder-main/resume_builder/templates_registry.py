@@ -27,12 +27,15 @@ class Template:
     accent: str
     font: str
     photo: bool = False
+    # Original cvbuilders formats: employer/school first, lists as lines.
+    org_first: bool = False
+    lines: bool = False
 
     def to_dict(self) -> Dict[str, object]:
         return asdict(self)
 
 
-CATEGORIES = ["Professional", "Modern", "Minimal", "Creative", "Classic"]
+CATEGORIES = ["Original", "Professional", "Modern", "Minimal", "Creative", "Classic"]
 
 FONTS = {
     "inter": {"label": "Inter", "body": "'Inter', Arial, sans-serif", "head": "'Inter', Arial, sans-serif", "docx": "Calibri"},
@@ -42,10 +45,21 @@ FONTS = {
     "dm": {"label": "DM Sans", "body": "'DM Sans', Arial, sans-serif", "head": "'DM Sans', Arial, sans-serif", "docx": "Arial"},
     "playfair": {"label": "Playfair", "body": "'Inter', Arial, sans-serif", "head": "'Playfair Display', Georgia, serif", "docx": "Georgia"},
     "merriweather": {"label": "Merriweather", "body": "'Merriweather', Georgia, serif", "head": "'Merriweather', Georgia, serif", "docx": "Georgia"},
+    "times": {"label": "Times", "body": "'Times New Roman', Tinos, Times, serif", "head": "'Times New Roman', Tinos, Times, serif", "docx": "Times New Roman"},
     "plex": {"label": "IBM Plex", "body": "'IBM Plex Sans', Arial, sans-serif", "head": "'IBM Plex Mono', 'Courier New', monospace", "docx": "Arial"},
 }
 
 _TEMPLATES: List[Template] = [
+    # The three formats from the original cvbuilders.org.
+    Template("finance", "Finance", "Original", "Banking, consulting & PE",
+             "The original cvbuilders format: centred name, ruled headings, employer and dates on one line.",
+             "single", "#111111", "times", org_first=True, lines=True),
+    Template("generic", "Generic", "Original", "Works for any industry",
+             "The original all-rounder: bold name and centred headings between two rules.",
+             "single", "#111111", "times", org_first=True, lines=True),
+    Template("techline", "Tech Classic", "Original", "Software, product & data",
+             "The original tech format: a blue name, blue headings and a compact single column.",
+             "single", "#1F4E79", "dm", org_first=True, lines=True),
     Template("clean", "Clean", "Professional", "Works for any role",
              "A crisp single column with a coloured name and tidy section rules.",
              "single", "#2F5D8A", "inter"),
