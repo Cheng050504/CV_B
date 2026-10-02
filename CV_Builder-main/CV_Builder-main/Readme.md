@@ -1,15 +1,16 @@
 # CV Builders — CV & Cover Letter Builder
 
-Pick one of 23 templates, fill in your details, and watch your CV take shape on the page as you type. Change the template, colour, font, size or section order at any time without retyping anything, then download a PDF that looks exactly like the preview, an editable Word file, or a backup you can open again later.
+Pick one of 45 templates, fill in your details, and watch your CV take shape on the page as you type. Change the template, colour, font, size or section order at any time without retyping anything, then download a PDF that looks exactly like the preview, an editable Word file, or a backup you can open again later.
 
 ---
 
 ## Features
 
-- **23 templates in 6 styles** (Original, Professional, Modern, Minimal, Creative, Classic), each previewed live with sample content on the home page and the `/templates` gallery.
+- **45 templates in 6 styles** (Original, Professional, Modern, Minimal, Creative, Classic), each previewed live with sample content on the home page and the `/templates` gallery.
 - **Live, editable page.** The CV is drawn in the browser from a small JSON document. Click any part of the page to jump to its form.
+- **Styles from popular resume catalogues:** one-page LaTeX look, university format, EU-style labels, Lebenslauf with photo, infographic dot ratings, skill bars, boxed form, Swiss grid, newspaper masthead, gradient header, vertical name strip and more.
 - **Original formats:** Finance, Generic and Tech Classic recreate the three templates from the first version of cvbuilders.org (employer and location on one line, role and dates on the next, skills as short lines).
-- **Design controls:** template, accent colour (swatches or any colour), 9 fonts, text size, spacing, A4 or US Letter, photo on/off.
+- **Design controls:** template, accent colour (swatches or any colour), 11 fonts, text size, spacing, A4 or US Letter, photo on/off.
 - **Flexible sections:** Profile, Experience, Education, Projects, Volunteering, Skills, Languages, Certifications, Awards, Interests and custom sections. Rename, hide, reorder by drag, and reorder entries.
 - **Several CVs at once:** rename, duplicate one for another job, start from an example, delete.
 - **CV strength meter** with the next most useful tip, linked to the right section.

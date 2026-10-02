@@ -9,8 +9,9 @@ Nothing is stored on the server between requests.
 from __future__ import annotations
 
 import io
+import os
 import logging
-from flask import Blueprint, render_template, request, jsonify, session, abort, send_file
+from flask import Blueprint, current_app, render_template, request, jsonify, session, abort, send_file, send_from_directory
 
 from .templates_registry import CATEGORIES, FONTS, featured_templates, get_template, list_templates
 from .services.docx_builder import build_docx
@@ -54,6 +55,13 @@ def index():
         cv_meta=_cv_meta(),
         llm_enabled=llm.is_enabled(),
     )
+
+
+@bp.route("/favicon.ico")
+def favicon():
+    """Browsers ask for /favicon.ico before reading the page's icon links."""
+    return send_from_directory(os.path.join(current_app.static_folder, "img"), "favicon-32.png",
+                               mimetype="image/png", max_age=86400)
 
 
 @bp.route("/templates")
