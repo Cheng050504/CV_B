@@ -16,6 +16,7 @@ from flask import Blueprint, current_app, render_template, request, jsonify, ses
 from .templates_registry import CATEGORIES, FONTS, featured_templates, get_template, list_templates
 from .services.docx_builder import build_docx
 from .services import llm
+from .services import cv_import
 
 
 log = logging.getLogger(__name__)
@@ -198,3 +199,50 @@ def api_suggest_skills():
 @bp.route("/api/llm/draft-cover-letter", methods=["POST"])
 def api_draft_cover_letter():
     return _ai_call(lambda cfg, d: llm.draft_cover_letter(cfg, d))
+
+
+@bp.route("/api/llm/translate", methods=["POST"])
+def api_translate():
+    data = request.get_json(silent=True) or {}
+    strings = data.get("strings") if isinstance(data, dict) else None
+    language = str(data.get("language") or "").strip() if isinstance(data, dict) else ""
+    if not isinstance(strings, dict) or not strings or not language:
+        _validate_csrf()
+        return jsonify({"error": "Choose a language and add some content first."}), 400
+    return _ai_call(lambda cfg, d: llm.translate_strings(cfg, strings, language))
+
+
+@bp.route("/api/import", methods=["POST"])
+def api_import():
+    """Read an uploaded CV and return it in the editor's shape.
+
+    Uses the visitor's AI key (or the site key) when there is one, because it
+    reads messy layouts far better; otherwise falls back to pattern matching.
+    The file is processed in memory and never stored.
+    """
+    _validate_csrf()
+    upload = request.files.get("file")
+    if not upload or not upload.filename:
+        return jsonify({"error": "Choose a file to import."}), 400
+    data = upload.read(4 * 1024 * 1024 + 1)
+    if len(data) > 4 * 1024 * 1024:
+        return jsonify({"error": "That file is over 4 MB. Try a smaller PDF or the Word version."}), 400
+    try:
+        text = cv_import.extract_text(upload.filename, data)
+    except cv_import.ImportError_ as e:
+        return jsonify({"error": str(e)}), 400
+
+    note = ""
+    try:
+        cfg = _ai_config()
+    except (llm.LLMDisabled, ValueError):
+        cfg = None
+    if cfg is not None:
+        try:
+            parsed = cv_import.normalize(llm.parse_cv(cfg, text))
+            if parsed["sections"] or any(parsed["personal"].values()):
+                return jsonify({"cv": parsed, "usedAi": True})
+        except (llm.LLMError, cv_import.ImportError_) as e:
+            note = f"AI couldn't read it ({e}), so we used the basic reader."
+    parsed = cv_import.normalize(cv_import.heuristic_parse(text))
+    return jsonify({"cv": parsed, "usedAi": False, "note": note})

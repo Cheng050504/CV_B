@@ -31,9 +31,17 @@ class Template:
     org_first: bool = False
     lines: bool = False
 
-    def to_dict(self) -> Dict[str, object]:
-        return asdict(self)
+    @property
+    def ats(self) -> bool:
+        """One column and no photo: the layouts tracking systems read most reliably."""
+        return self.layout == "single" and not self.photo and self.id not in NOT_ATS
 
+    def to_dict(self) -> Dict[str, object]:
+        return dict(asdict(self), ats=self.ats)
+
+
+# Single-column designs whose text order is unusual for parsers.
+NOT_ATS = {"vertical"}
 
 CATEGORIES = ["Original", "Professional", "Modern", "Minimal", "Creative", "Classic"]
 

@@ -323,3 +323,72 @@ def draft_cover_letter(cfg: Config, context: Dict[str, str]) -> str:
         raise LLMError("Fill in the job, company or some of your CV first.")
     user = "Candidate context:\n" + "\n".join(ctx_lines) + _job_block(context.get("job", ""))
     return _chat(cfg, system, user, temperature=0.55, max_tokens=700)
+
+
+def _json_from(raw: str):
+    """Pull the first JSON object out of a model reply (tolerates code fences)."""
+    start, end = raw.find("{"), raw.rfind("}")
+    if start < 0 or end <= start:
+        raise LLMError("The AI didn't return a readable result. Try again.")
+    try:
+        return json.loads(raw[start:end + 1])
+    except ValueError as e:
+        raise LLMError("The AI didn't return a readable result. Try again.") from e
+
+
+CV_SCHEMA_HINT = """{
+  "personal": {"firstName": "", "lastName": "", "headline": "", "email": "", "phone": "", "location": "", "website": "", "linkedin": ""},
+  "sections": [
+    {"type": "summary", "title": "Profile", "items": [{"text": ""}]},
+    {"type": "experience", "title": "Experience", "items": [{"role": "", "org": "", "location": "", "start": "", "end": "", "description": "one achievement per line"}]},
+    {"type": "education", "title": "Education", "items": [{"degree": "", "org": "", "location": "", "start": "", "end": "", "grade": "", "description": ""}]},
+    {"type": "projects", "title": "Projects", "items": [{"name": "", "link": "", "start": "", "end": "", "description": ""}]},
+    {"type": "volunteering", "title": "Volunteering", "items": [{"role": "", "org": "", "location": "", "start": "", "end": "", "description": ""}]},
+    {"type": "skills", "title": "Skills", "items": [{"name": "", "level": ""}]},
+    {"type": "languages", "title": "Languages", "items": [{"name": "", "level": ""}]},
+    {"type": "certifications", "title": "Certifications", "items": [{"name": "", "org": "", "end": ""}]},
+    {"type": "awards", "title": "Awards", "items": [{"name": "", "org": "", "end": "", "description": ""}]},
+    {"type": "interests", "title": "Interests", "items": [{"name": ""}]},
+    {"type": "custom", "title": "Any other heading", "items": [{"name": "", "org": "", "location": "", "start": "", "end": "", "description": ""}]}
+  ]
+}"""
+
+
+def parse_cv(cfg: Config, text: str) -> Dict[str, object]:
+    """Structure the text of an existing CV into the editor's JSON shape."""
+    text = _clip(text, 15000)
+    if len(text) < 30:
+        raise LLMError("There isn't enough text in that file to read a CV from.")
+    system = (
+        "You convert the text of a CV into JSON for a CV editor. Copy the person's own words; "
+        "do not rewrite, summarise or improve them. " + _NO_INVENT + " "
+        "Keep the sections in the order they appear and only include sections that exist. "
+        "Put each bullet point on its own line in description. Dates as written (e.g. 'Jun 2023', '2021', 'Present'). "
+        "Skill level must be one of Beginner, Intermediate, Advanced, Expert or empty; language level one of "
+        "Native, Fluent, Advanced, Intermediate, Basic or empty. Return ONLY the JSON object, shaped like:\n" + CV_SCHEMA_HINT
+    )
+    raw = _chat(cfg, system, "CV text:\n\n" + text, temperature=0, max_tokens=6000)
+    return _json_from(raw)
+
+
+def translate_strings(cfg: Config, strings: Dict[str, str], language: str) -> Dict[str, str]:
+    """Translate a flat {id: text} map, keeping ids, names and numbers."""
+    language = _clip(language, 40)
+    if not language:
+        raise LLMError("Choose a language first.")
+    clean = {str(k)[:40]: _clip(v, 2000) for k, v in list(strings.items())[:400] if _clip(v, 1)}
+    if not clean:
+        raise LLMError("There's nothing to translate yet.")
+    if sum(len(v) for v in clean.values()) > 16000:
+        raise LLMError("This CV is too long to translate in one go. Hide a section and try again.")
+    system = (
+        f"Translate the values of this JSON object into {language} for a CV. Keep every key exactly. "
+        "Keep company names, school names, product names, technologies, email addresses, links and numbers unchanged. "
+        "Use natural, professional CV wording in the target language and keep line breaks. "
+        "Return ONLY the JSON object."
+    )
+    raw = _chat(cfg, system, json.dumps(clean, ensure_ascii=False), temperature=0.2, max_tokens=8000)
+    data = _json_from(raw)
+    if not isinstance(data, dict):
+        raise LLMError("The AI didn't return a readable result. Try again.")
+    return {k: _clip(data.get(k), 2000) for k in clean if isinstance(data.get(k), str) and data.get(k).strip()}

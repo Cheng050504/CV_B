@@ -32,7 +32,7 @@ def create_app() -> Flask:
         instance_relative_config=True,
     )
     app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key")
-    app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024  # 2MB form payload cap
+    app.config["MAX_CONTENT_LENGTH"] = 4 * 1024 * 1024  # 4MB cap (CV uploads; Vercel allows 4.5MB)
 
     from .routes import bp as main_bp
     app.register_blueprint(main_bp)

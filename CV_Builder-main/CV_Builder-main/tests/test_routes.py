@@ -206,3 +206,147 @@ def test_ai_errors_are_friendly(client, monkeypatch):
     monkeypatch.setattr(llm, "_chat", boom)
     r = client.post("/api/llm/test", json={}, headers=_byok(client))
     assert r.status_code == 502 and "rejected" in r.get_json()["error"]
+
+
+SAMPLE_CV_TEXT = """Jordan Patel
+Software Engineer
+jordan.patel@example.com | +44 7700 900456 | Leeds, UK | linkedin.com/in/jordanpatel
+
+Profile
+Backend engineer who enjoys making slow systems fast.
+
+Experience
+Software Engineer
+Sky Betting & Gaming | Leeds | Sep 2022 – Present
+• Cut API latency by 40% by adding a Redis cache
+• Led the move from cron jobs to a queue
+
+Education
+BSc Computer Science
+University of Leeds | 2019 – 2022
+First Class Honours
+
+Skills
+Python (Expert), Go (Intermediate), PostgreSQL
+
+Languages
+English (Native), Gujarati (Fluent)
+"""
+
+
+def _upload(client, name, data, **headers):
+    return client.post("/api/import", data={"file": (io.BytesIO(data), name)},
+                       headers={"X-CSRF-Token": _token(client), **headers}, content_type="multipart/form-data")
+
+
+def _section(cv, kind):
+    return next(s for s in cv["sections"] if s["type"] == kind)
+
+
+def test_import_text_with_basic_reader(client, monkeypatch):
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    r = _upload(client, "cv.txt", SAMPLE_CV_TEXT.encode())
+    assert r.status_code == 200
+    body = r.get_json()
+    cv = body["cv"]
+    assert body["usedAi"] is False
+    p = cv["personal"]
+    assert (p["firstName"], p["lastName"], p["headline"]) == ("Jordan", "Patel", "Software Engineer")
+    assert p["email"] == "jordan.patel@example.com" and "linkedin.com/in/jordanpatel" in p["linkedin"]
+    job = _section(cv, "experience")["items"][0]
+    assert job["role"] == "Software Engineer" and job["org"] == "Sky Betting & Gaming"
+    assert (job["start"], job["end"]) == ("Sep 2022", "Present")
+    assert job["description"].splitlines() == ["Cut API latency by 40% by adding a Redis cache", "Led the move from cron jobs to a queue"]
+    edu = _section(cv, "education")["items"][0]
+    assert edu["degree"] == "BSc Computer Science" and edu["org"] == "University of Leeds" and "First Class" in edu["grade"]
+    skills = {i["name"]: i.get("level", "") for i in _section(cv, "skills")["items"]}
+    assert skills == {"Python": "Expert", "Go": "Intermediate", "PostgreSQL": ""}
+    langs = {i["name"]: i.get("level", "") for i in _section(cv, "languages")["items"]}
+    assert langs == {"English": "Native", "Gujarati": "Fluent"}
+
+
+def test_import_word_document(client, monkeypatch):
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    doc = Document()
+    for line in SAMPLE_CV_TEXT.splitlines():
+        doc.add_paragraph(line)
+    buf = io.BytesIO()
+    doc.save(buf)
+    r = _upload(client, "My CV.docx", buf.getvalue())
+    assert r.status_code == 200
+    cv = r.get_json()["cv"]
+    assert cv["personal"]["lastName"] == "Patel"
+    assert _section(cv, "experience")["items"][0]["org"] == "Sky Betting & Gaming"
+
+
+@pytest.mark.parametrize("name,data", [("cv.exe", b"MZ" * 40), ("cv.pdf", b"not really a pdf"), ("cv.txt", b"   ")])
+def test_import_rejects_unreadable_files(client, name, data):
+    r = _upload(client, name, data)
+    assert r.status_code == 400 and r.get_json()["error"]
+
+
+def test_import_needs_csrf_and_a_file(client):
+    r = client.post("/api/import", data={"file": (io.BytesIO(b"x" * 50), "cv.txt")}, content_type="multipart/form-data")
+    assert r.status_code in (400, 403)
+    r = client.post("/api/import", data={}, headers={"X-CSRF-Token": _token(client)}, content_type="multipart/form-data")
+    assert r.status_code == 400
+
+
+def test_import_with_ai_keeps_only_known_fields(client, monkeypatch):
+    reply = """```json
+    {"personal": {"firstName": "Jordan", "lastName": "Patel", "password": "x"},
+     "sections": [
+       {"type": "experience", "title": "Experience", "items": [{"role": "Engineer", "org": "Sky", "salary": "lots"}]},
+       {"type": "skills", "title": "Skills", "items": [{"name": "Python", "level": "Wizard"}]},
+       {"type": "malware", "title": "Nope", "items": [{"name": "x"}]}
+     ]}
+    ```"""
+    monkeypatch.setattr(llm, "_chat", lambda *a, **k: reply)
+    r = _upload(client, "cv.txt", SAMPLE_CV_TEXT.encode(), **{k: v for k, v in _byok(client).items() if k != "X-CSRF-Token"})
+    body = r.get_json()
+    assert r.status_code == 200 and body["usedAi"] is True
+    cv = body["cv"]
+    assert "password" not in cv["personal"]
+    # Unknown section types are kept as a plain custom section, under their own heading.
+    assert [(s["type"], s["title"]) for s in cv["sections"]] == [("experience", "Experience"), ("skills", "Skills"), ("custom", "Nope")]
+    assert "salary" not in cv["sections"][0]["items"][0]
+    assert cv["sections"][1]["items"][0]["level"] == ""
+
+
+def test_import_falls_back_when_ai_fails(client, monkeypatch):
+    def boom(*a, **k):
+        raise llm.LLMError("Claude rejected that API key. Check it in AI settings.")
+    monkeypatch.setattr(llm, "_chat", boom)
+    r = _upload(client, "cv.txt", SAMPLE_CV_TEXT.encode(), **{k: v for k, v in _byok(client).items() if k != "X-CSRF-Token"})
+    body = r.get_json()
+    assert r.status_code == 200 and body["usedAi"] is False and "basic reader" in body["note"]
+    assert body["cv"]["personal"]["firstName"] == "Jordan"
+
+
+def test_translate_returns_only_the_keys_it_was_given(client, monkeypatch):
+    seen = {}
+
+    def fake_chat(cfg, system, user, **kw):
+        seen["system"] = system
+        return '{"p.headline": "Ingeniera de software", "s.exp": "Experiencia", "extra": "no"}'
+
+    monkeypatch.setattr(llm, "_chat", fake_chat)
+    r = client.post("/api/llm/translate", json={"strings": {"p.headline": "Software engineer", "s.exp": "Experience"},
+                                                "language": "Spanish"}, headers=_byok(client))
+    assert r.status_code == 200
+    assert r.get_json()["result"] == {"p.headline": "Ingeniera de software", "s.exp": "Experiencia"}
+    assert "Spanish" in seen["system"]
+
+
+@pytest.mark.parametrize("payload", [{}, {"strings": "hi", "language": "French"}, {"strings": {"a": "b"}, "language": ""}])
+def test_translate_rejects_bad_payload(client, payload):
+    r = client.post("/api/llm/translate", json=payload, headers=_byok(client))
+    assert r.status_code == 400
+
+
+def test_templates_say_which_are_ats_friendly(client):
+    tpls = {t.id: t for t in list_templates()}
+    assert tpls["clean"].ats and tpls["finance"].ats
+    assert not tpls["vertical"].ats
+    assert not any(t.ats for t in tpls.values() if t.photo or t.layout != "single")
+    assert '"ats": true' in client.get("/build").get_data(as_text=True)

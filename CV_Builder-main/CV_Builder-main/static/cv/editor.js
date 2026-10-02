@@ -33,6 +33,7 @@
       store.currentId = cv.id;
     }
     if (!store.cvs[store.currentId]) store.currentId = Object.keys(store.cvs)[0];
+    if (!Array.isArray(store.apps)) store.apps = [];
   }
 
   function persist() {
@@ -89,6 +90,9 @@
   const aiReady = () => !!(ai.key || CFG.serverAi);
   const providerOf = id => PROVIDERS.find(p => p.id === id) || PROVIDERS[0] || { id: '', label: 'AI', model: '' };
   let aiDraft = null, aiMsg = null, skillIdeas = [], tplFilter = 'All';
+  const tplFlags = new Set();
+  let miniMode = 'example';
+  const I = window.CVInsights;
 
   /* ── Undo / redo ───────────────────────────────────────── */
   let undoStack = [], redoStack = [], lastSnap = null, snapTimer = null;
@@ -168,6 +172,7 @@
     const pc = $('#pageCount');
     pc.hidden = pages < 2;
     pc.textContent = `${pages} pages`;
+    $('#btnFit').hidden = pages < 2 || doc === 'letter';
   }
 
   function switchTemplateAnimated(fn) {
@@ -203,6 +208,8 @@
       <div class="sec-list" id="secList">${c.sections.map(s => navItem(s.id, s.title, { drag: true, hidden: s.hidden })).join('')}</div>
       <button type="button" class="sec-add" data-open="add">+ Add section</button>
       ${navItem('letter', 'Cover letter')}
+      ${navItem('match', 'Job match')}
+      ${navItem('apps', 'Applications')}
       ${navItem('ai', 'AI assistant')}`;
     $('.sec-row[data-id="ai"]').classList.toggle('ai-on', aiReady());
     enableSort($('#secList'), '.sec-row', (from, to) => {
@@ -230,7 +237,7 @@
   function open(id, opts) {
     active = id;
     if (id === 'letter') showDoc('letter');
-    else if (id !== 'design' && id !== 'add' && id !== 'ai') showDoc('cv');
+    else if (!['design', 'add', 'ai', 'apps', 'import', 'translate'].includes(id)) showDoc('cv');
     if (id === 'ai') { aiDraft = null; aiMsg = null; }
     renderNav();
     renderPanel(opts);
@@ -246,6 +253,10 @@
     else if (active === 'letter') html = letterPanel();
     else if (active === 'add') html = addPanel();
     else if (active === 'ai') html = aiPanel();
+    else if (active === 'match') html = matchPanel();
+    else if (active === 'apps') html = appsPanel();
+    else if (active === 'import') html = importPanel();
+    else if (active === 'translate') html = translatePanel();
     else if (sec) html = sectionPanel(sec, opts && opts.openItem);
     else { active = 'personal'; html = personalPanel(); }
     panel.innerHTML = `<div class="panel-card">${html}</div>`;
@@ -270,14 +281,21 @@
   function designPanel() {
     const st = cv().style;
     const tpls = (META.order || Object.keys(META.templates)).map(id => META.templates[id]);
+    const shown = tpls.filter(t => t.id === st.template || ((tplFilter === 'All' || t.category === tplFilter) && tplPasses(t)));
+    const flag = (id, label) => `<button type="button" class="flag" aria-pressed="${tplFlags.has(id)}" data-tpl-flag="${id}">${label}</button>`;
     return `${panelHead('Design', 'Make it yours', 'Pick a template, then tune the colour, font and spacing. Your content stays the same.')}
       <div class="panel-body">
-        <div class="field-group"><div class="field-group-label">Template <span class="hint-inline">${tpls.length} to choose from</span></div>
+        <div class="field-group"><div class="field-group-label">Template <span class="hint-inline">${shown.length} of ${tpls.length} shown</span></div>
           <div class="tpl-filter">${['All', ...(META.categories || [])].map(c => `<button type="button" class="pill" aria-pressed="${tplFilter === c}" data-tpl-filter="${esc(c)}">${esc(c)}</button>`).join('')}</div>
-          <div class="tpl-pick">${tpls.filter(t => tplFilter === 'All' || t.category === tplFilter || t.id === st.template).map(t => `
+          <div class="tpl-flags">
+            ${flag('one', 'One column')}${flag('two', 'Two columns')}${flag('photo', 'With photo')}${flag('nophoto', 'No photo')}${flag('ats', 'ATS-friendly')}
+            <span class="tpl-mode seg">${[['example', 'Example'], ['mine', 'My CV']].map(([v, l]) => `<button type="button" class="seg-btn ${miniMode === v ? 'on' : ''}" data-mini-mode="${v}">${l}</button>`).join('')}</span>
+          </div>
+          <p class="hint tpl-ats-note">${tplFlags.has('ats') ? 'ATS-friendly means one column and no photo, which application tracking systems read most reliably.' : ''}</p>
+          <div class="tpl-pick">${shown.map(t => `
             <button type="button" class="tpl-pick-card ${st.template === t.id ? 'selected' : ''}" data-template="${esc(t.id)}" aria-pressed="${st.template === t.id}">
               <span class="cv-mini" data-template="${esc(t.id)}"></span>
-              <span class="tpl-pick-name">${esc(t.name)}</span>
+              <span class="tpl-pick-name">${esc(t.name)}${t.ats ? '<i class="ats-dot" title="ATS-friendly"></i>' : ''}</span>
             </button>`).join('')}</div>
         </div>
         <div class="field-group"><div class="field-group-label">Colour</div>
@@ -291,8 +309,8 @@
             <button type="button" class="seg-btn ${st.font === id ? 'on' : ''}" data-font="${id}" style="font-family:${f.head}">${esc(f.label)}</button>`).join('')}</div>
         </div>
         <div class="grid">
-          <div class="field-group"><div class="field-group-label">Text size</div>
-            <div class="seg">${[['s', 'Small'], ['m', 'Medium'], ['l', 'Large']].map(([v, l]) => `<button type="button" class="seg-btn ${st.size === v ? 'on' : ''}" data-size="${v}">${l}</button>`).join('')}</div></div>
+          <div class="field-group"><div class="field-group-label">Text size${st.fit && st.fit < 1 ? ' <span class="hint-inline">(squeezed to fit)</span>' : ''}</div>
+            <div class="seg">${[['s', 'Small'], ['m', 'Medium'], ['l', 'Large']].map(([v, l]) => `<button type="button" class="seg-btn ${st.size === v && !(st.fit < 1) ? 'on' : ''}" data-size="${v}">${l}</button>`).join('')}</div></div>
           <div class="field-group"><div class="field-group-label">Spacing</div>
             <div class="seg">${[['compact', 'Tight'], ['normal', 'Normal'], ['relaxed', 'Airy']].map(([v, l]) => `<button type="button" class="seg-btn ${st.spacing === v ? 'on' : ''}" data-spacing="${v}">${l}</button>`).join('')}</div></div>
           <div class="field-group"><div class="field-group-label">Paper</div>
@@ -301,14 +319,26 @@
             <div class="seg">${[[true, 'Show'], [false, 'Hide']].map(([v, l]) => `<button type="button" class="seg-btn ${!!st.photo === v ? 'on' : ''}" data-photo="${v}">${l}</button>`).join('')}</div></div>
         </div>
       </div>
-      <div class="panel-foot"><span class="spacer"></span><button type="button" class="btn primary" data-open="personal">Next: your details <span class="arrow">→</span></button></div>`;
+      <div class="panel-foot"><button type="button" class="btn ghost sm" data-fit>Fit to one page</button><span class="spacer"></span><button type="button" class="btn primary" data-open="personal">Next: your details <span class="arrow">→</span></button></div>`;
+  }
+
+  function tplPasses(t) {
+    const two = t.layout !== 'single';
+    if (tplFlags.has('one') && two) return false;
+    if (tplFlags.has('two') && !two) return false;
+    if (tplFlags.has('photo') && !t.photo) return false;
+    if (tplFlags.has('nophoto') && t.photo) return false;
+    if (tplFlags.has('ats') && !t.ats) return false;
+    return true;
   }
 
   function personalPanel() {
     const p = cv().personal, st = cv().style;
     const f = (k, label, ph, opts) => field(label, `data-p="${k}"`, p[k] || '', 'text', Object.assign({ ph }, opts));
+    const fresh = E.strength(cv()).score < 25;
     return `${panelHead('Personal details', 'Tell us about you', 'These appear at the top of your CV and cover letter.')}
       <div class="panel-body">
+        ${fresh ? '<div class="import-banner"><span><b>Already have a CV?</b> Import it and skip the typing.</span><button type="button" class="btn sm" data-open="import">Import PDF or Word</button></div>' : ''}
         <div class="photo-row">
           <div class="photo-preview">${p.photo ? `<img src="${esc(p.photo)}" alt="Your photo">` : '<span>Photo</span>'}</div>
           <div>
@@ -348,6 +378,21 @@
     return `<span class="ai-row"><button type="button" class="ai-chip" data-ai="improve">${SPARKLE} Improve this</button><button type="button" class="ai-chip" data-ai="concise">${SPARKLE} Make it more concise</button></span>`;
   }
 
+  /* Live writing tips under profile and description boxes. */
+  function tipsCtx(sec, item) {
+    if (sec.type === 'summary') return { kind: 'summary' };
+    return { kind: ['experience', 'projects', 'volunteering'].includes(sec.type) ? 'achievements' : 'plain', end: item.end };
+  }
+  function tipsInner(sec, item) {
+    const text = sec.type === 'summary' ? item.text : item.description;
+    if (!String(text || '').trim()) return '';
+    const tips = I.lint(text, tipsCtx(sec, item));
+    return tips.length
+      ? `<ul class="tips-list">${tips.map(t => `<li>${esc(t)}</li>`).join('')}</ul>`
+      : '<p class="tips-ok">✓ Reads well</p>';
+  }
+  function tipsBox(sec, item) { return `<div class="tips" data-tips="${item.id}" aria-live="polite">${tipsInner(sec, item)}</div>`; }
+
   function itemLabel(sec, item) {
     const def = T[sec.type];
     const t = def.title_of ? def.title_of(item) : item.name;
@@ -360,7 +405,7 @@
     let body;
     if (def.single) {
       const item = sec.items[0] || (sec.items[0] = { id: E.uid(), text: '' });
-      body = `<div class="grid">${field('Profile', `data-item="${item.id}" data-k="text"`, item.text || '', 'textarea', { full: true, rows: 6, ph: def.fields[0][3], after: aiChips('summary') })}</div>`;
+      body = `<div class="grid">${field('Profile', `data-item="${item.id}" data-k="text"`, item.text || '', 'textarea', { full: true, rows: 6, ph: def.fields[0][3], after: aiChips('summary') + tipsBox(sec, item) })}</div>`;
     } else if (def.tags) {
       body = `<div class="items tag-items">${sec.items.map(item => `
           <div class="item-card tag-row" data-item-id="${item.id}" draggable="true">
@@ -389,7 +434,7 @@
           </div>
           <div class="item-body"><div class="grid">${def.fields.map(([k, label, kind, ph]) =>
             kind === 'textarea'
-              ? field(label, `data-item="${item.id}" data-k="${k}"`, item[k] || '', 'textarea', { full: true, ph, after: k === 'description' && ['experience', 'projects', 'volunteering', 'custom'].includes(sec.type) ? aiChips('desc') : '' })
+              ? field(label, `data-item="${item.id}" data-k="${k}"`, item[k] || '', 'textarea', { full: true, ph, after: (k === 'description' && ['experience', 'projects', 'volunteering', 'custom'].includes(sec.type) ? aiChips('desc') : '') + (k === 'description' ? tipsBox(sec, item) : '') })
               : field(label, `data-item="${item.id}" data-k="${k}"`, item[k] || '', 'text', { ph })).join('')}</div></div>
         </div>`;
       }).join('')}</div>`;
@@ -446,8 +491,9 @@
           ${ai.key ? '<button type="button" class="btn ghost sm danger" id="aiForget">Forget my key</button>' : ''}
         </div>
         <p class="hint privacy">Your key is kept only in this browser. When you ask for help it goes over HTTPS through our server to ${esc(cur.label)} for that one request. We never save or log it.</p>
-        <div class="field-group job-group"><div class="field-group-label">Tailor to a job <span class="hint-inline">(optional)</span></div>
-          ${field('Job advert', 'data-job', cv().job || '', 'textarea', { full: true, rows: 6, ph: 'Paste the job advert here. AI will tailor your profile, achievements, skills and cover letter to it.' })}
+        <div class="field-group job-group"><div class="field-group-label">Tailor to a job</div>
+          <p class="hint">${cv().job ? 'AI is tailoring its writing to the job advert you added.' : 'Paste a job advert in Job match and AI will tailor your profile, achievements, skills and cover letter to it.'}</p>
+          <button type="button" class="btn sm" data-open="match">${cv().job ? 'Edit the job advert' : 'Add a job advert'}</button>
         </div>
         <div class="ai-can"><b>Where you'll find AI help</b>
           <ul><li>Profile: write it for you, or improve yours</li><li>Experience and projects: turn rough notes into achievements, improve or shorten them</li><li>Skills: suggest skills you may have missed</li><li>Cover letter: draft it from your CV</li></ul>
@@ -488,13 +534,258 @@
       <div class="panel-foot"><span class="spacer"></span><button type="button" class="btn primary" data-download="pdf">Download PDF</button></div>`;
   }
 
+  /* ── Job match ─────────────────────────────────────────── */
+  function matchPanel() {
+    return `${panelHead('Job match', 'How well does your CV fit this job?', 'Paste the job advert. We check which of its important words your CV already uses. AI also uses it to tailor its writing.')}
+      <div class="panel-body">
+        <div class="grid">${field('Job advert', 'data-job', cv().job || '', 'textarea', { full: true, rows: 8, ph: 'Paste the full job advert here…' })}</div>
+        <div id="matchResult" aria-live="polite">${matchResult()}</div>
+      </div>
+      <div class="panel-foot"><span class="spacer"></span><button type="button" class="btn primary" data-open="${esc((cv().sections.find(s => s.type === 'experience' && !s.hidden) || { id: 'personal' }).id)}">Edit my experience <span class="arrow">→</span></button></div>`;
+  }
+
+  function matchResult() {
+    const r = I.jobMatch(cv(), cv().job);
+    if (!r) return '<p class="hint">Your match score appears here once you paste an advert.</p>';
+    const label = r.score >= 75 ? 'Strong match' : r.score >= 50 ? 'Good start' : r.score >= 30 ? 'Some gaps' : 'Big gaps';
+    return `<div class="match-top">
+        <div class="match-ring" style="--p:${r.score}"><b>${r.score}%</b></div>
+        <div><b class="match-label">${label}</b>
+          <p class="hint">${r.missing.length ? `Your CV doesn't mention ${r.missing.length} of the advert's key ${r.missing.length === 1 ? 'term' : 'terms'} yet.` : 'Your CV covers the key terms in this advert.'}</p></div>
+      </div>
+      ${r.missing.length ? `<div class="field-group-label">Missing <span class="hint-inline">Tap one to add it to your skills</span></div>
+        <div class="kw-list">${r.missing.map(k => `<button type="button" class="kw kw-miss" data-add-kw="${esc(k)}">+ ${esc(k)}</button>`).join('')}</div>` : ''}
+      ${r.matched.length ? `<div class="field-group-label">Already on your CV</div>
+        <div class="kw-list">${r.matched.map(k => `<span class="kw kw-ok">✓ ${esc(k)}</span>`).join('')}</div>` : ''}
+      <p class="hint">Only add what's true for you. The strongest CVs also use these words in their achievements, not just in the skills list.</p>`;
+  }
+
+  function addSkill(name) {
+    const c = cv();
+    let sec = c.sections.find(s => s.type === 'skills');
+    if (!sec) { sec = E.newSection('skills'); c.sections.push(sec); }
+    sec.hidden = false;
+    if (sec.items.some(i => String(i.name || '').toLowerCase() === name.toLowerCase())) return false;
+    sec.items = sec.items.filter(i => String(i.name || '').trim());
+    sec.items.push({ id: E.uid(), name: name.replace(/^./, ch => ch.toUpperCase()), level: '' });
+    return true;
+  }
+
+  /* ── Applications and tailored copies ──────────────────── */
+  const STATUSES = ['Saved', 'Applied', 'Interview', 'Offer', 'Rejected'];
+  let tailorDraft = { company: '', role: '', link: '', job: '' };
+
+  function appsPanel() {
+    const apps = store.apps.slice().sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    const counts = STATUSES.map(st => [st, apps.filter(a => a.status === st).length]).filter(([, n]) => n);
+    const f = (k, label, ph, opts) => field(label, `data-tailor="${k}"`, tailorDraft[k] || '', (opts && opts.kind) || 'text', Object.assign({ ph }, opts));
+    return `${panelHead('Applications', 'Tailor a copy for each job', 'Make a copy of this CV for one job, then keep track of where you applied.')}
+      <div class="panel-body">
+        <div class="field-group tailor">
+          <div class="grid">
+            ${f('company', 'Company', 'Monzo')}
+            ${f('role', 'Job title', 'Product Analyst')}
+            ${f('link', 'Link to the advert', 'https://…', { full: true })}
+            ${f('job', 'Job advert', 'Paste it to get a match score and tailored AI help (optional)', { full: true, kind: 'textarea', rows: 4 })}
+          </div>
+          <div class="ai-actions">
+            <button type="button" class="btn primary" data-tailor-create="copy">Make a tailored copy</button>
+            <button type="button" class="btn ghost sm" data-tailor-create="track">Just track it</button>
+          </div>
+          <p class="hint">The copy starts from “${esc(cv().name || 'My CV')}”, so this CV stays as it is.</p>
+        </div>
+        <div class="field-group-label">Your applications ${counts.length ? `<span class="hint-inline">${counts.map(([s, n]) => `${n} ${s.toLowerCase()}`).join(' · ')}</span>` : ''}</div>
+        ${apps.length ? `<div class="apps">${apps.map(a => {
+          const linked = a.cvId && store.cvs[a.cvId];
+          return `<div class="app-row" data-status="${esc(a.status)}">
+            <div class="app-main"><b>${esc(a.role || 'Role')}</b><span>${esc(a.company || 'Company')}</span></div>
+            <button type="button" class="icon-btn remove" data-app-del="${esc(a.id)}" aria-label="Remove">✕</button>
+            <div class="app-ctrl">
+              <select data-app="${esc(a.id)}" data-k="status" aria-label="Status">${STATUSES.map(st => `<option ${st === a.status ? 'selected' : ''}>${st}</option>`).join('')}</select>
+              <input type="date" data-app="${esc(a.id)}" data-k="date" value="${esc(a.date || '')}" aria-label="Date">
+              ${linked ? `<button type="button" class="link-btn" data-app-open="${esc(a.cvId)}">Open CV</button>` : ''}
+              ${a.link && /^https?:\/\//i.test(a.link) ? `<a class="link-btn" href="${esc(a.link)}" target="_blank" rel="noopener">Advert ↗</a>` : ''}
+            </div>
+          </div>`;
+        }).join('')}</div>` : '<p class="hint">Nothing tracked yet. Add your first job above.</p>'}
+      </div>`;
+  }
+
+  function createTailored(mode) {
+    const d = Object.assign({}, tailorDraft);
+    d.company = d.company.trim(); d.role = d.role.trim();
+    if (!d.company && !d.role) { toast('Add the company or the job title first.'); return; }
+    const app = { id: E.uid(), company: d.company, role: d.role, link: d.link.trim(), status: mode === 'copy' ? 'Saved' : 'Applied', date: new Date().toISOString().slice(0, 10), cvId: '' };
+    tailorDraft = { company: '', role: '', link: '', job: '' };
+    if (mode === 'copy') {
+      const copy = JSON.parse(JSON.stringify(cv()));
+      copy.id = E.uid();
+      copy.name = [d.role, d.company].filter(Boolean).join(' – ').slice(0, 60);
+      copy.updatedAt = Date.now();
+      copy.job = d.job.slice(0, 6000);
+      copy.letter = Object.assign(copy.letter || {}, { role: d.role || copy.letter.role, company: d.company || copy.letter.company, recipient: '', recipientTitle: '', address: '' });
+      app.cvId = copy.id;
+      store.apps.push(app);
+      addCv(copy);
+      open(copy.job ? 'match' : 'apps');
+      toast(`Copy created for ${copy.name}. Edit it freely, your original is unchanged.`);
+    } else {
+      store.apps.push(app);
+      persist();
+      renderPanel({ keepScroll: true });
+      toast('Added to your applications');
+    }
+  }
+
+  /* ── Import an existing CV ─────────────────────────────── */
+  function importPanel() {
+    return `${panelHead('Import', 'Start from your existing CV', 'Upload your current CV and we fill in the sections for you. It opens as a new CV, so nothing here is overwritten.')}
+      <div class="panel-body">
+        <label class="dropzone" id="dropzone">
+          <input type="file" id="cvFile" accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain">
+          <b>Choose a file</b><span>or drop it here · PDF, Word (.docx) or text, up to 4&nbsp;MB</span>
+        </label>
+        <p class="ai-status ${aiReady() ? 'ok' : ''}">${aiReady() ? '✓ AI will read it, which handles unusual layouts best.' : 'We use a basic reader. For tricky layouts, add an AI key in AI assistant first.'}</p>
+        <p class="hint privacy">The file is read once to pull out the text and is never stored.${aiReady() ? ' Its text goes to the AI provider to be read.' : ''}</p>
+        <div id="importStatus" aria-live="polite"></div>
+      </div>`;
+  }
+
+  async function importFile(file) {
+    const status = $('#importStatus');
+    if (!file) return;
+    if (file.size > 4 * 1024 * 1024) { status.innerHTML = '<p class="ai-msg bad">That file is over 4 MB. Try the Word version or a smaller PDF.</p>'; return; }
+    status.innerHTML = `<p class="ai-msg">Reading ${esc(file.name)}…</p>`;
+    $('#dropzone').classList.add('is-busy');
+    const fd = new FormData();
+    fd.append('file', file);
+    const headers = { 'X-CSRF-Token': $('#csrfToken').value };
+    if (ai.key) Object.assign(headers, { 'X-AI-Provider': ai.provider || '', 'X-AI-Key': ai.key, 'X-AI-Model': ai.model || '' });
+    try {
+      const resp = await fetch('/api/import', { method: 'POST', headers, body: fd });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(data.error || (resp.status === 413 ? 'That file is too large.' : `HTTP ${resp.status}`));
+      const c = E.newCV(META.templates[cv().style.template]);
+      c.name = (file.name.replace(/\.[^.]+$/, '') || 'Imported CV').slice(0, 60);
+      Object.assign(c.personal, data.cv.personal);
+      const sections = (data.cv.sections || []).filter(s => T[s.type]).map(s => ({
+        id: E.uid(), type: s.type, title: s.title || T[s.type].title, hidden: false,
+        items: s.items.map(i => Object.assign({ id: E.uid() }, i)),
+      }));
+      if (sections.length) c.sections = sections;
+      addCv(c);
+      open('personal');
+      toast(data.usedAi ? 'Imported. Check each section and make it yours.' : 'Imported with the basic reader. Check job titles and companies in each section.');
+      if (data.note) setTimeout(() => toast(data.note), 3400);
+    } catch (err) {
+      status.innerHTML = `<p class="ai-msg bad">${esc('Sorry, that file could not be imported: ' + err.message)}</p>`;
+      $('#dropzone').classList.remove('is-busy');
+    }
+  }
+
+  /* ── Translate ─────────────────────────────────────────── */
+  const LANGS = ['Spanish', 'French', 'German', 'Italian', 'Portuguese', 'Dutch', 'Polish', 'Swedish', 'Turkish', 'Arabic', 'Hindi',
+    'Chinese (Simplified)', 'Chinese (Traditional)', 'Japanese', 'Korean', 'Vietnamese', 'Indonesian', 'Russian', 'Ukrainian', 'English (UK)', 'English (US)'];
+  let trLang = 'Spanish';
+
+  function translatePanel() {
+    return `${panelHead('Translate', 'Your CV in another language', 'AI translates your CV and cover letter into a new copy with the same design. Names, companies and numbers stay as they are.')}
+      <div class="panel-body">
+        <div class="grid">
+          <label class="full">Language<input id="trLang" list="trLangs" value="${esc(trLang)}" placeholder="Type any language"></label>
+          <datalist id="trLangs">${LANGS.map(l => `<option value="${esc(l)}">`).join('')}</datalist>
+        </div>
+        <div class="ai-actions"><button type="button" class="btn primary" id="trGo">${SPARKLE} Translate into a new copy</button></div>
+        ${aiReady() ? '' : '<p class="hint">Translation uses AI. Add your key in AI assistant first.</p>'}
+        <p class="hint">Skill and language levels stay in English so the level bars keep working. Read the result through before you send it.</p>
+      </div>`;
+  }
+
+  function translatable(c) {
+    const out = {}, put = (k, v) => { if (String(v || '').trim()) out[k] = v; };
+    put('p.headline', c.personal.headline);
+    const nameTypes = ['skills', 'interests', 'certifications', 'awards', 'projects', 'custom'];
+    c.sections.forEach(s => {
+      put(`s.${s.id}`, s.title);
+      s.items.forEach(i => {
+        ['role', 'degree', 'description', 'text', 'grade'].forEach(k => put(`i.${s.id}.${i.id}.${k}`, i[k]));
+        if (nameTypes.includes(s.type)) put(`i.${s.id}.${i.id}.name`, i.name);
+        if (/present|current/i.test(i.end || '')) put(`i.${s.id}.${i.id}.end`, i.end);
+      });
+    });
+    ['role', 'body', 'signoff', 'recipientTitle'].forEach(k => put(`l.${k}`, c.letter[k]));
+    return out;
+  }
+
+  async function translateCv(btn) {
+    const lang = trLang.trim();
+    if (!lang) { toast('Choose a language first.'); return; }
+    if (!aiReady()) { open('ai', { keepScroll: true }); toast('Add your AI key once, then translation will work.'); return; }
+    const src = cv();
+    btn.disabled = true; btn.classList.add('is-thinking'); btn.lastChild.textContent = ' Translating…';
+    try {
+      const result = await postJSON('/api/llm/translate', { strings: translatable(src), language: lang });
+      const copy = JSON.parse(JSON.stringify(src));
+      copy.id = E.uid(); copy.updatedAt = Date.now();
+      copy.name = `${src.name || 'My CV'} (${lang})`.slice(0, 60);
+      Object.entries(result || {}).forEach(([k, v]) => {
+        const [kind, a, b, f] = k.split('.');
+        if (kind === 'p') copy.personal[a] = v;
+        else if (kind === 'l') copy.letter[a] = v;
+        else if (kind === 's') { const s = copy.sections.find(x => x.id === a); if (s) s.title = v; }
+        else if (kind === 'i') { const s = copy.sections.find(x => x.id === a); const it = s && s.items.find(x => x.id === b); if (it) it[f] = v; }
+      });
+      addCv(copy);
+      open('design');
+      toast(`Translated into ${lang}. Your original CV is unchanged.`);
+    } catch (err) {
+      if (err.needsKey) open('ai', { keepScroll: true });
+      toast('Translation failed: ' + err.message);
+      btn.disabled = false; btn.classList.remove('is-thinking'); btn.lastChild.textContent = ' Translate into a new copy';
+    }
+  }
+
+  /* ── Fit to one page ───────────────────────────────────── */
+  function measurePages(c) {
+    const box = $('#measureBox');
+    box.innerHTML = E.render(c, META);
+    const page = E.PAGE[c.style.page] || E.PAGE.A4;
+    const h = box.firstElementChild.scrollHeight;
+    return h / page.h;
+  }
+
+  function fitOnePage() {
+    const c = cv(), st = c.style, before = Object.assign({}, st);
+    if (measurePages(c) <= 1.003) { toast('It already fits on one page.'); return; }
+    const sizes = ['l', 'm', 's'], spacings = ['relaxed', 'normal', 'compact'];
+    const si = Math.max(0, sizes.indexOf(st.size)), pi = Math.max(0, spacings.indexOf(st.spacing));
+    const tries = [];
+    for (let p = pi; p < spacings.length; p++) for (let z = si; z < sizes.length; z++) tries.push({ spacing: spacings[p], size: sizes[z], fit: 1, cost: (z - si) + (p - pi) });
+    tries.sort((a, b) => a.cost - b.cost);
+    [0.95, 0.9, 0.86, 0.82].forEach(f => tries.push({ spacing: 'compact', size: 's', fit: f }));
+    const test = JSON.parse(JSON.stringify(c));
+    const hit = tries.find(t => { Object.assign(test.style, { spacing: t.spacing, size: t.size, fit: t.fit }); return measurePages(test) <= 1.003; });
+    $('#measureBox').innerHTML = '';
+    if (!hit) { toast('Still over one page at the smallest setting. Try hiding a section or trimming older roles.'); return; }
+    Object.assign(st, { spacing: hit.spacing, size: hit.size, fit: hit.fit });
+    changed({ panel: active === 'design' });
+    toast('Fitted to one page', 'Undo', () => { Object.assign(cv().style, before); changed({ panel: active === 'design' }); });
+  }
+
   /* ── Panel events (delegated) ──────────────────────────── */
   panel.addEventListener('input', e => {
     const t = e.target, c = cv();
     if (t.id === 'aiKey') { aiDraft.key = t.value; return; }
     if (t.id === 'aiModel') { aiDraft.model = t.value; return; }
     if (t.id === 'aiRemember') { aiDraft.remember = t.checked; return; }
-    if (t.hasAttribute('data-job')) { c.job = t.value.slice(0, 6000); changed(); return; }
+    if (t.hasAttribute('data-job')) { c.job = t.value.slice(0, 6000); changed(); const r = $('#matchResult', panel); if (r) r.innerHTML = matchResult(); return; }
+    if (t.dataset.app) {
+      const a = store.apps.find(x => x.id === t.dataset.app);
+      if (a) { a[t.dataset.k] = t.value; persist(); if (t.dataset.k === 'status') renderPanel({ keepScroll: true }); }
+      return;
+    }
+    if (t.dataset.tailor) { tailorDraft[t.dataset.tailor] = t.value; return; }
+    if (t.id === 'trLang') { trLang = t.value; return; }
     if (t.dataset.p) { c.personal[t.dataset.p] = t.value; changed(); }
     else if (t.dataset.l) { c.letter[t.dataset.l] = t.value; changed(); }
     else if (t.hasAttribute('data-sec-title')) {
@@ -508,6 +799,10 @@
       if (!item) return;
       item[t.dataset.k] = t.value;
       changed();
+      if (['text', 'description', 'end'].includes(t.dataset.k)) {
+        const box = $(`[data-tips="${item.id}"]`, panel);
+        if (box) box.innerHTML = tipsInner(sec, item);
+      }
       const card = t.closest('.item-card');
       if (card && !T[sec.type].tags && !T[sec.type].single) {
         const lab = itemLabel(sec, item);
@@ -538,7 +833,24 @@
     const c = cv(), st = c.style;
     const sec = c.sections.find(s => s.id === active);
     if (b.dataset.aiProvider) { aiDraft.provider = b.dataset.aiProvider; if (aiDraft.provider !== ai.provider) { aiDraft.key = ''; aiDraft.model = ''; } aiMsg = null; renderPanel(); return; }
-    if (b.dataset.tplFilter) { tplFilter = b.dataset.tplFilter; renderPanel(); return; }
+    if (b.dataset.tplFilter) { tplFilter = b.dataset.tplFilter; renderPanel({ keepScroll: true }); return; }
+    if (b.dataset.tplFlag) {
+      const f = b.dataset.tplFlag, pairs = { one: 'two', two: 'one', photo: 'nophoto', nophoto: 'photo' };
+      if (tplFlags.has(f)) tplFlags.delete(f); else { tplFlags.add(f); if (pairs[f]) tplFlags.delete(pairs[f]); }
+      renderPanel({ keepScroll: true }); return;
+    }
+    if (b.dataset.miniMode) { miniMode = b.dataset.miniMode; renderPanel({ keepScroll: true }); return; }
+    if (b.hasAttribute('data-fit')) { fitOnePage(); return; }
+    if (b.dataset.addKw) { if (addSkill(b.dataset.addKw)) { changed({ nav: true }); toast(`Added “${b.dataset.addKw}” to your skills`); } const r = $('#matchResult', panel); if (r) r.innerHTML = matchResult(); return; }
+    if (b.dataset.tailorCreate) { createTailored(b.dataset.tailorCreate); return; }
+    if (b.dataset.appOpen) { switchTo(b.dataset.appOpen); return; }
+    if (b.dataset.appDel) {
+      const i = store.apps.findIndex(a => a.id === b.dataset.appDel), removed = store.apps.splice(i, 1)[0];
+      persist(); renderPanel({ keepScroll: true });
+      toast('Application removed', 'Undo', () => { store.apps.splice(i, 0, removed); persist(); if (active === 'apps') renderPanel({ keepScroll: true }); });
+      return;
+    }
+    if (b.id === 'trGo') { translateCv(b); return; }
     if (b.id === 'aiSave') { saveAiSettings(b); return; }
     if (b.id === 'aiForget') { saveAi({}); aiDraft = null; aiMsg = { ok: true, text: 'Your key was removed from this browser.' }; renderNav(); renderPanel(); return; }
     if (b.id === 'aiShowKey') { const k = $('#aiKey'); k.type = k.type === 'password' ? 'text' : 'password'; b.textContent = k.type === 'password' ? 'Show' : 'Hide'; return; }
@@ -558,8 +870,8 @@
       });
     } else if (b.dataset.accent) { st.accent = b.dataset.accent; changed({ panel: true }); }
     else if (b.dataset.font) { st.font = b.dataset.font; changed({ panel: true }); }
-    else if (b.dataset.size) { st.size = b.dataset.size; changed({ panel: true }); }
-    else if (b.dataset.spacing) { st.spacing = b.dataset.spacing; changed({ panel: true }); }
+    else if (b.dataset.size) { st.size = b.dataset.size; st.fit = 1; changed({ panel: true }); }
+    else if (b.dataset.spacing) { st.spacing = b.dataset.spacing; st.fit = 1; changed({ panel: true }); }
     else if (b.dataset.page) { st.page = b.dataset.page; changed({ panel: true }); }
     else if (b.dataset.photo) { st.photo = b.dataset.photo === 'true'; changed({ panel: true }); }
     else if (b.dataset.open) open(b.dataset.open);
@@ -612,6 +924,11 @@
     changed({ nav: true, panel: active === id });
     toast(s.hidden ? `${s.title} hidden from your CV` : `${s.title} is back on your CV`);
   }
+
+  panel.addEventListener('change', e => { if (e.target.id === 'cvFile') importFile(e.target.files[0]); });
+  panel.addEventListener('dragover', e => { const z = e.target.closest('#dropzone'); if (z) { e.preventDefault(); z.classList.add('is-over'); } });
+  panel.addEventListener('dragleave', e => { const z = e.target.closest('#dropzone'); if (z) z.classList.remove('is-over'); });
+  panel.addEventListener('drop', e => { const z = e.target.closest('#dropzone'); if (!z) return; e.preventDefault(); z.classList.remove('is-over'); importFile(e.dataTransfer.files[0]); });
 
   /* Photo upload: shrink to 320px so it stays small in storage. */
   $('#photoFile').addEventListener('change', e => {
@@ -701,8 +1018,11 @@
         <b>${esc(c.name || 'My CV')}</b><span>${esc(META.templates[c.style.template] ? META.templates[c.style.template].name : '')} · edited ${esc(new Date(c.updatedAt || Date.now()).toLocaleDateString())}</span></button>`).join('')}
       <hr>
       <button type="button" role="menuitem" data-cv="rename">Rename this CV</button>
-      <button type="button" role="menuitem" data-cv="duplicate">Duplicate for another job</button>
+      <button type="button" role="menuitem" data-cv="tailor">Tailor a copy for a job</button>
+      <button type="button" role="menuitem" data-cv="translate">Translate this CV</button>
+      <button type="button" role="menuitem" data-cv="duplicate">Duplicate</button>
       <button type="button" role="menuitem" data-cv="new">Start a new CV</button>
+      <button type="button" role="menuitem" data-cv="upload">Import my existing CV <span>PDF or Word</span></button>
       <button type="button" role="menuitem" data-cv="sample">Start from an example</button>
       <button type="button" role="menuitem" data-cv="import">Open a backup file</button>
       ${list.length > 1 ? '<button type="button" role="menuitem" class="danger" data-cv="delete">Delete this CV</button>' : ''}`;
@@ -729,9 +1049,12 @@
       case 'duplicate': {
         const copy = JSON.parse(JSON.stringify(c));
         copy.id = E.uid(); copy.name = (c.name || 'My CV') + ' (copy)'; copy.updatedAt = Date.now();
-        addCv(copy); toast('Copy created. Tailor it for the new job.');
+        addCv(copy); toast('Copy created.');
         break;
       }
+      case 'tailor': open('apps'); break;
+      case 'translate': open('translate'); break;
+      case 'upload': open('import'); break;
       case 'new': addCv(E.newCV(META.templates[c.style.template])); open('design'); break;
       case 'sample': { const s = E.sampleCV(META.templates[c.style.template]); s.name = 'Example CV'; addCv(s); break; }
       case 'import': $('#importFile').click(); break;
@@ -954,8 +1277,10 @@
 
   function drawMini(el) {
     const t = META.templates[el.dataset.template];
-    const sample = E.sampleCV(t);
-    sample.style.photo = false;
+    const mine = miniMode === 'mine' && E.strength(cv()).score > 0;
+    const sample = mine ? JSON.parse(JSON.stringify(cv())) : E.sampleCV(t);
+    if (mine) Object.assign(sample.style, { template: t.id, accent: t.accent, font: t.font, photo: t.photo && !!sample.personal.photo, fit: 1 });
+    else sample.style.photo = false;
     const page = E.PAGE.A4;
     el.innerHTML = `<div class="cv-mini-inner">${E.render(sample, META)}</div>`;
     requestAnimationFrame(() => {
@@ -978,6 +1303,7 @@
     if (mod && e.key.toLowerCase() === 'z' && !e.target.matches('input, textarea')) { e.preventDefault(); e.shiftKey ? redo() : undo(); }
   });
   $('#btnUndo').addEventListener('click', undo);
+  $('#btnFit').addEventListener('click', fitOnePage);
   $('#btnRedo').addEventListener('click', redo);
   window.addEventListener('resize', () => requestAnimationFrame(fitPreview));
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => fitPreview());
