@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block body_class %}editor{% endblock %}
+{% block head %}{% include "_cv_assets.html" %}{% endblock %}
+
+{% block content %}
+<div class="workspace">
+
+  <!-- Left: CVs, strength, sections -->
+  <aside class="ws-nav" aria-label="CV sections">
+    <div class="ws-nav-inner">
+      <div class="cv-switch">
+        <button type="button" class="cv-switch-btn" id="cvSwitchBtn" aria-haspopup="menu" aria-expanded="false">
+          <span class="cv-switch-name" id="cvName">My CV</span>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+        <div class="menu" id="cvMenu" role="menu" hidden></div>
+      </div>
+
+      <button type="button" class="strength" id="strength" aria-live="polite">
+        <span class="strength-top"><span>CV strength</span><b id="strengthScore">0%</b></span>
+        <span class="strength-bar"><span id="strengthBar"></span></span>
+        <span class="strength-tip" id="strengthTip"></span>
+      </button>
+
+      <nav class="sec-nav" id="secNav"></nav>
+
+      <div class="draft-bar">
+        <span class="draft-status" id="draftStatus" aria-live="polite">Saved in this browser</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Center: the page -->
+  <section class="ws-canvas" id="canvas" aria-label="Live preview">
+    <div class="canvas-bar">
+      <div class="doc-tabs" role="tablist" aria-label="Document">
+        <button type="button" class="doc-tab" role="tab" aria-selected="true" data-doc="cv">CV</button>
+        <button type="button" class="doc-tab" role="tab" aria-selected="false" data-doc="letter">Cover letter</button>
+      </div>
+      <div class="canvas-actions">
+        <button type="button" class="icon-btn" id="btnUndo" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button type="button" class="icon-btn" id="btnRedo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15 14 5-5-5-5M20 9H10a6 6 0 0 0 0 12h3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="dl">
+          <button type="button" class="btn primary sm" id="btnDownload" aria-haspopup="menu" aria-expanded="false">
+            Download
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </button>
+          <div class="menu menu-right" id="dlMenu" role="menu" hidden>
+            <button type="button" role="menuitem" data-dl="pdf"><b>PDF</b><span>Looks exactly like the preview</span></button>
+            <button type="button" role="menuitem" data-dl="docx"><b>Word (.docx)</b><span>Simple layout you can edit in Word</span></button>
+            <button type="button" role="menuitem" data-dl="json"><b>Backup file</b><span>Open it again here later</span></button>
+          </div>
+        </div>
+        <button type="button" class="btn sm drawer-close" id="btnClosePreview">Close</button>
+      </div>
+    </div>
+    <div class="canvas-stage" id="stage">
+      <div class="paper-scale" id="paperScale">
+        <div class="paper-doc" id="paper"></div>
+      </div>
+      <span class="page-count" id="pageCount" hidden></span>
+    </div>
+    <p class="canvas-note">Click any part of your CV to edit it.</p>
+  </section>
+
+  <!-- Right: what you're editing -->
+  <section class="ws-panel" aria-label="Edit">
+    <div class="panel" id="panel"></div>
+  </section>
+</div>
+
+<button type="button" class="btn primary preview-toggle" id="btnOpenPreview">Preview</button>
+<input type="file" id="importFile" accept="application/json,.json" hidden>
+<input type="file" id="photoFile" accept="image/*" hidden>
+<input type="hidden" id="csrfToken" value="{{ csrf_token() }}">
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<div id="printRoot" aria-hidden="true"></div>
+<style id="pageRule"></style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  window.EDITOR_CONFIG = {
+    serverAi: {{ 'true' if llm_enabled else 'false' }},
+    aiProviders: {{ ai_providers|tojson }},
+    requestedTemplate: {{ requested_template_id|tojson }},
+  };
+</script>
+<script src="{{ url_for('static', filename='cv/editor.js') }}"></script>
+{% endblock %}

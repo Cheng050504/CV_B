@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block body_class %}home{% endblock %}
+{% block head %}{% include "_cv_assets.html" %}{% endblock %}
+
+{% block content %}
+<section class="section" style="padding-top: 56px;">
+  <div class="container wide">
+    <div class="tpl-head">
+      <div class="section-head" data-reveal>
+        <span class="eyebrow">Templates</span>
+        <h1 class="page-title">Find a CV that feels like you.</h1>
+        <p>{{ templates|length }} templates. Every one lets you change the colour, font, size and section order.</p>
+      </div>
+      <div class="pills" role="group" aria-label="Filter templates" data-filter-for="tplGrid" data-reveal style="--i:1">
+        <button type="button" class="pill" data-cat="all" aria-pressed="true">All</button>
+        {% for cat in categories %}
+          <button type="button" class="pill" data-cat="{{ cat }}" aria-pressed="false">{{ cat }}</button>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="tpl-grid" id="tplGrid">
+      {% for t in templates %}
+        <a class="tpl-card-lg" href="{{ url_for('main.build', template=t.id) }}" data-cat="{{ t.category }}" data-reveal style="--i:{{ loop.index0 % 3 }}">
+          <span class="tpl-card-thumb">
+            <span class="cv-mini" data-template="{{ t.id }}" role="img" aria-label="Preview of the {{ t.name }} CV template"></span>
+            <span class="tpl-card-cta btn primary sm">Use this style</span>
+          </span>
+          <span class="tpl-card-meta">
+            <span>
+              <span class="tpl-card-name">{{ t.name }}</span>
+              <span class="tpl-card-desc">{{ t.description }}</span>
+            </span>
+            <span class="tag">{{ t.category }}</span>
+          </span>
+        </a>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endblock %}

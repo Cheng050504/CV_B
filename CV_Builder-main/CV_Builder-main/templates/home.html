@@ -5,6 +5,7 @@
 {%- endmacro %}
 
 {% block body_class %}home{% endblock %}
+{% block head %}{% include "_cv_assets.html" %}{% endblock %}
 
 {% block content %}
 
@@ -27,14 +28,10 @@
     <div class="paper-stack" aria-hidden="true" data-reveal style="--i:2">
       {% for t in templates[:3] %}
         <div class="paper-sheet s{{ loop.index }}">
-          <img src="{{ url_for('static', filename='img/templates/' ~ t.id ~ '.png') }}" alt="" width="640" height="828">
+          <div class="cv-mini" data-template="{{ t.id }}"></div>
         </div>
       {% endfor %}
-      {% if llm_enabled %}
-        <div class="paper-note">{{ sparkle() }} Improved 3 bullet points</div>
-      {% else %}
-        <div class="paper-note">{{ sparkle() }} Your draft saves as you type</div>
-      {% endif %}
+      <div class="paper-note">{{ sparkle() }} Improved 3 bullet points</div>
     </div>
   </div>
 </section>
@@ -46,7 +43,7 @@
       <div class="section-head" data-reveal>
         <span class="eyebrow">Templates</span>
         <h2>Start with a style you like.</h2>
-        <p>Each one comes with a matching cover letter, and you can switch any time.</p>
+        <p>{{ template_count }} templates, each with a matching cover letter. Change colours and fonts any time.</p>
       </div>
       <div class="pills" role="group" aria-label="Filter templates" data-filter-for="tplTrack" data-reveal style="--i:1">
         <button type="button" class="pill" data-cat="all" aria-pressed="true">All</button>
@@ -59,7 +56,7 @@
       {% for t in templates %}
         <a class="tpl-card-lg" href="{{ url_for('main.build', template=t.id) }}" data-cat="{{ t.category }}" data-reveal style="--i:{{ loop.index0 }}">
           <span class="tpl-card-thumb">
-            <img src="{{ url_for('static', filename='img/templates/' ~ t.id ~ '.png') }}" alt="Preview of the {{ t.name }} CV template" width="640" height="828" loading="lazy" draggable="false">
+            <span class="cv-mini" data-template="{{ t.id }}" role="img" aria-label="Preview of the {{ t.name }} CV template"></span>
             <span class="tpl-card-cta btn primary sm">Use this style</span>
           </span>
           <span class="tpl-card-meta">
@@ -72,6 +69,7 @@
         </a>
       {% endfor %}
     </div>
+    <div class="see-all" data-reveal><a class="btn lg" href="{{ url_for('main.gallery') }}">See all {{ template_count }} templates <span class="arrow" aria-hidden="true">→</span></a></div>
   </div>
 </section>
 
@@ -101,7 +99,7 @@
             <div class="mini-field"></div>
             <div class="mini-field"></div>
             <div class="mini-field tall"></div>
-            {% if llm_enabled %}<span class="mini-ai">{{ sparkle() }} Improve this</span>{% endif %}
+            <span class="mini-ai">{{ sparkle() }} Improve this</span>
           </div>
         </div>
         <span class="how-num">02</span>
@@ -132,11 +130,13 @@
     </div>
     <div class="faq">
       {% set faqs = [
-        ("Is CV Builders free?", "Yes. You can build and download your CV and cover letter without paying or creating an account."),
-        ("Which template should I choose?", "Finance suits banking, consulting and private equity. Tech suits software, product and data roles. Generic works for everything else. You can switch templates in the editor without losing what you've typed."),
-        ("What file formats do I get?", "You always get editable Word (.docx) files. When PDF export is available you'll also see PDF downloads; otherwise open the Word file and use Save as PDF."),
-        ("Is my information saved?", "Your draft is stored only in your own browser so you can come back to it. Documents are generated on the fly and are not kept on our server."),
-        ("Can I make a CV with no work experience?", "Yes. Lead with your education, then add clubs, volunteering, projects and part-time jobs in the experience section."),
+        ("Is CV Builders free?", "Yes. You can build, edit and download your CV and cover letter without paying or creating an account."),
+        ("Which template should I choose?", "Pick the one you like the look of. Classic suits banking and law, Tech suits engineering and data, and Creative suits design and marketing. You can switch templates, colours and fonts at any time without losing what you've typed."),
+        ("What file formats do I get?", "A PDF that looks exactly like the preview, and an editable Word (.docx) file. You can also save a backup file and open it again later."),
+        ("Is my information saved?", "Your CVs are saved only in your own browser, so you can come back to them on the same device. Nothing is stored on our server."),
+        ("Can I make more than one CV?", "Yes. Keep a version for each kind of job: duplicate a CV, rename it and tailor it."),
+        ("How does the AI writing help work?", "Paste your own API key from Claude, OpenAI, Gemini or OpenRouter in AI assistant settings. It can draft your profile and achievements, polish or shorten what you wrote, suggest skills and write a cover letter, tailored to a job advert if you paste one. Your key stays in your browser and is only passed through to the provider when you ask for help. Usage is billed to your own account."),
+        ("Can I make a CV with no work experience?", "Yes. Lead with your education, then add projects, volunteering and awards. Hide any section you don't need."),
       ] %}
       {% for q, a in faqs %}
         <details data-reveal style="--i:{{ loop.index0 }}">
