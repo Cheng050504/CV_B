@@ -150,7 +150,36 @@
 
   function filled(item, keys) { return keys.some(k => String(item[k] || '').trim()); }
 
-  function sectionHtml(sec, ghost) {
+  /* Original cvbuilders formats: short lists read as "Skills: a, b, c" lines,
+     and neighbouring lists share one heading. */
+  function linesHtml(secs, ghost) {
+    const lines = secs.map(sec => {
+      const items = sec.items.filter(i => String(i.name || '').trim());
+      const text = items.length
+        ? items.map(i => esc(i.name) + (i.level ? ` (${esc(i.level)})` : '')).join(', ')
+        : (ghost ? `<span class="cv-ghost">Add your ${esc(sec.title.toLowerCase())}</span>` : '');
+      return text ? `<p class="cv-line" data-sec="${esc(sec.id)}"><strong>${esc(sec.title)}:</strong> ${text}</p>` : '';
+    }).filter(Boolean);
+    if (!lines.length) return '';
+    const titles = secs.map(s => s.title);
+    const title = titles.length > 1 ? titles.slice(0, -1).join(', ') + ' & ' + titles[titles.length - 1] : titles[0];
+    return `<section class="cv-sec cv-sec--lines" data-sec="${esc(secs[0].id)}"><h2 class="cv-h"><span>${esc(title)}</span></h2>${lines.join('')}</section>`;
+  }
+
+  function sectionsHtml(secs, ghost, meta) {
+    if (!meta.lines) return secs.map(s => sectionHtml(s, ghost, meta)).join('');
+    const out = [];
+    let run = [];
+    const flush = () => { if (run.length) out.push(linesHtml(run, ghost)); run = []; };
+    secs.forEach(s => {
+      if ((SECTION_TYPES[s.type] || {}).tags) run.push(s);
+      else { flush(); out.push(sectionHtml(s, ghost, meta)); }
+    });
+    flush();
+    return out.join('');
+  }
+
+  function sectionHtml(sec, ghost, meta) {
     const def = SECTION_TYPES[sec.type] || SECTION_TYPES.custom;
     const keys = def.fields.map(f => f[0]);
     const items = sec.items.filter(i => filled(i, keys));
@@ -163,7 +192,12 @@
         `<li data-level="${esc(i.level || '')}"><span class="cv-tag-name">${esc(i.name)}</span>${i.level ? `<span class="cv-tag-level">${esc(i.level)}</span>` : ''}</li>`).join('')}</ul>` : '';
     } else {
       body = items.map(i => {
-        const title = def.title_of(i), sub = def.sub_of(i);
+        let title = def.title_of(i), sub = def.sub_of(i);
+        /* Original formats lead with the employer or school in bold. */
+        if (meta && meta.org_first && i.org) {
+          sub = [def.title_of(i), sec.type === 'education' ? i.grade : ''].filter(Boolean).join(', ');
+          title = i.org;
+        }
         const dates = [i.start, i.end].filter(Boolean).map(esc).join(' – ');
         return `<div class="cv-item">
           ${title ? `<div class="cv-item-title">${esc(title)}</div>` : ''}
@@ -233,7 +267,7 @@
       </header>`;
 
     const sideHtml = hasSide
-      ? `<aside class="cv-side">${contactHtml(p) ? `<section class="cv-sec cv-sec--contact"><h2 class="cv-h"><span>Contact</span></h2>${contactHtml(p)}</section>` : ''}${side.map(s => sectionHtml(s, ghost)).join('')}</aside>`
+      ? `<aside class="cv-side">${contactHtml(p) ? `<section class="cv-sec cv-sec--contact"><h2 class="cv-h"><span>Contact</span></h2>${contactHtml(p)}</section>` : ''}${side.map(s => sectionHtml(s, ghost, meta)).join('')}</aside>`
       : '';
 
     const style = [
@@ -249,7 +283,7 @@
     return `<div class="cv cv--${esc(meta.id || st.template)} cv--${esc(meta.layout || 'single')}" style="${style}">
       ${header}
       <div class="cv-body">
-        <div class="cv-main">${main.map(s => sectionHtml(s, ghost)).join('')}</div>
+        <div class="cv-main">${sectionsHtml(main, ghost, meta)}</div>
         ${sideHtml}
       </div>
     </div>`;

@@ -340,3 +340,52 @@ ul.cv-desc li::marker { color: var(--accent); }
 /* Scaled live previews (home, gallery) */
 .cv-mini { display: block; position: relative; overflow: hidden; width: 100%; background: #fff; pointer-events: none; }
 .cv-mini-inner { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+
+/* ── Original cvbuilders formats (Finance, Generic, Tech Classic) ─────
+   Employer or school bold on the left with the location on the right,
+   then the role in italics with the dates on the right. */
+.cv--finance, .cv--generic, .cv--techline { --pad-x: 56px; --pad-y: 46px; --sec-gap: 14px; --ink: #111; --ink-2: #111; }
+.cv--finance .cv-contact .cv-ico, .cv--generic .cv-contact .cv-ico, .cv--techline .cv-contact .cv-ico { display: none; }
+:is(.cv--finance, .cv--generic, .cv--techline) .cv-contact li { gap: 0; }
+:is(.cv--finance, .cv--generic, .cv--techline) .cv-item { grid-template-areas: "title loc" "sub dates" "desc desc"; margin-bottom: 9px; }
+:is(.cv--finance, .cv--generic, .cv--techline) .cv-item-meta { display: contents; }
+:is(.cv--finance, .cv--generic, .cv--techline) .cv-loc { grid-area: loc; text-align: right; white-space: nowrap; }
+:is(.cv--finance, .cv--generic, .cv--techline) .cv-dates { grid-area: dates; text-align: right; white-space: nowrap; }
+:is(.cv--finance, .cv--generic, .cv--techline) .cv-item-sub { color: var(--ink); }
+:is(.cv--finance, .cv--generic, .cv--techline) ul.cv-desc { list-style: none; padding-left: 0; margin-top: 2px; }
+:is(.cv--finance, .cv--generic, .cv--techline) ul.cv-desc li { margin-bottom: 0; }
+:is(.cv--finance, .cv--generic, .cv--techline) .cv-line { margin-bottom: 1px; }
+:is(.cv--finance, .cv--generic, .cv--techline) .cv-tags { display: block; }
+:is(.cv--finance, .cv--generic, .cv--techline) .cv-tags li { display: inline; background: none; padding: 0; }
+:is(.cv--finance, .cv--generic, .cv--techline) .cv-tags li:not(:last-child)::after { content: ", "; }
+:is(.cv--finance, .cv--generic, .cv--techline) .cv-tag-level::before { content: " ("; }
+:is(.cv--finance, .cv--generic, .cv--techline) .cv-tag-level::after { content: ")"; }
+
+/* Finance: centred name, left headings with a rule underneath. */
+.cv--finance .cv-head, .cv--generic .cv-head { flex-direction: column; text-align: center; gap: 2px; margin-bottom: 14px; }
+.cv--finance .cv-id, .cv--generic .cv-id { flex: none; }
+.cv--finance .cv-name { color: var(--ink); font-weight: 400; font-size: 2.05em; }
+.cv--finance .cv-headline, .cv--generic .cv-headline { margin-top: 2px; font-size: 1em; color: var(--ink); }
+.cv--finance .cv-contact, .cv--generic .cv-contact { justify-content: center; flex-basis: auto; gap: 0; color: var(--ink); font-size: 0.95em; }
+.cv--finance .cv-contact li:not(:last-child)::after, .cv--generic .cv-contact li:not(:last-child)::after { content: "|"; margin: 0 7px; }
+.cv--finance .cv-h { color: var(--accent); border-bottom: 1px solid var(--accent); letter-spacing: 0 !important; font-size: 1em; padding-bottom: 1px; margin-bottom: 4px; }
+.cv--finance .cv-loc { font-weight: 700; }
+.cv--finance .cv-item-meta { font-size: 1em; color: var(--ink); }
+
+/* Generic: bold centred name, centred headings between two rules. */
+.cv--generic .cv-name { color: var(--ink); font-weight: 700; font-size: 2.05em; }
+.cv--generic .cv-h { color: var(--accent); text-align: center; letter-spacing: 0 !important; font-size: 0.98em; border-top: 1px solid var(--accent); border-bottom: 1px solid var(--accent); padding: 3px 0; margin-bottom: 7px; }
+.cv--generic .cv-item-meta { font-size: 1em; color: var(--ink); }
+.cv--generic .cv-item-sub { margin-top: 2px; }
+
+/* Tech Classic: coloured name, compact contacts with dots, coloured headings. */
+.cv--techline { --ink-2: #5a5f66; --sec-gap: 12px; }
+.cv--techline .cv-head { gap: 2px; margin-bottom: 12px; }
+.cv--techline .cv-name { font-size: 2.3em; font-weight: 700; color: var(--accent); }
+.cv--techline .cv-headline { font-size: 1em; margin-top: 0; }
+.cv--techline .cv-contact { gap: 0; font-size: 0.9em; color: var(--ink-2); }
+.cv--techline .cv-contact li:not(:last-child)::after { content: "·"; margin: 0 8px; }
+.cv--techline .cv-h { font-size: 0.9em; letter-spacing: 0.02em !important; border-bottom-width: 1px; padding-bottom: 2px; margin-bottom: 6px; }
+.cv--techline .cv-item-meta { font-size: 0.95em; }
+.cv--techline .cv-loc, .cv--techline .cv-dates { color: var(--ink-2); }
+.cv--techline .cv-item-title { color: #1d232b; }

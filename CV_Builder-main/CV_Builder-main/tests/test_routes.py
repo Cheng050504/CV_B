@@ -42,6 +42,21 @@ def test_has_many_templates_across_categories():
     assert len({t.category for t in tpls}) >= 5
 
 
+def test_original_formats_are_back():
+    by_id = {t.id: t for t in list_templates()}
+    for tid in ("finance", "generic", "techline"):
+        t = by_id[tid]
+        assert t.category == "Original" and t.org_first and t.lines
+
+
+def test_docx_export_in_times_for_finance(client):
+    cv = _cv()
+    cv["style"].update(template="finance", font="times")
+    r = client.post("/api/export/docx", json={"cv": cv, "doc": "cv"}, headers={"X-CSRF-Token": _token(client)})
+    assert r.status_code == 200
+    assert Document(io.BytesIO(r.data)).styles["Normal"].font.name == "Times New Roman"
+
+
 def test_home_shows_featured_live_previews(client):
     html = client.get("/").get_data(as_text=True)
     assert 'class="cv-mini"' in html
