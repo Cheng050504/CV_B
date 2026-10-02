@@ -85,17 +85,34 @@ def _chat(messages: List[Dict[str, str]], *, temperature: float = 0.4, max_token
 # Public helpers used by the routes
 # ---------------------------------------------------------------------------
 
-def rewrite_bullet(text: str, role_context: Optional[str] = None) -> str:
-    """Rewrite a single experience bullet/description to be more impactful."""
+REWRITE_MODES = ("improve", "concise")
+
+
+def rewrite_bullet(text: str, role_context: Optional[str] = None, mode: str = "improve") -> str:
+    """Rewrite an experience description.
+
+    ``mode="improve"`` makes it more impactful; ``mode="concise"`` shortens it
+    without dropping facts.
+    """
     if not text or not text.strip():
         raise LLMError("Empty input.")
+    if mode not in REWRITE_MODES:
+        raise LLMError(f"Unknown rewrite mode: {mode}")
 
-    system = (
-        "You are an elite resume editor. You rewrite work-experience bullet points "
-        "to be concise, quantified, and action-led. Use strong verbs, include "
-        "numbers where implied, and preserve factual meaning. Return ONLY the "
-        "rewritten text — no preamble, no bullets prefix, no quotes."
-    )
+    if mode == "concise":
+        system = (
+            "You are an elite resume editor. Make the work-experience text below "
+            "more concise: cut filler words and merge repetition, but keep every "
+            "fact, number and line break. Return ONLY the rewritten text — no "
+            "preamble, no bullets prefix, no quotes."
+        )
+    else:
+        system = (
+            "You are an elite resume editor. You rewrite work-experience bullet points "
+            "to be concise, quantified, and action-led. Use strong verbs, include "
+            "numbers where implied, and preserve factual meaning. Return ONLY the "
+            "rewritten text — no preamble, no bullets prefix, no quotes."
+        )
     user = text.strip()
     if role_context:
         user = f"Role context: {role_context.strip()}\n\nOriginal:\n{text.strip()}"

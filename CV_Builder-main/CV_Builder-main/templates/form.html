@@ -1,61 +1,72 @@
 {% extends "base.html" %}
 
+{% macro sparkle() -%}
+<svg class="sparkle" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0c.4 3.9 2.6 6.4 8 8-5.4 1.6-7.6 4.1-8 8-.4-3.9-2.6-6.4-8-8 5.4-1.6 7.6-4.1 8-8Z"/></svg>
+{%- endmacro %}
+
+{% block body_class %}editor{% endblock %}
+
 {% block content %}
+{% set sections = ["Personal", "Education", "Experience", "Skills", "Cover letter"] %}
 
-<!-- Page intro -->
-<div class="page-intro">
-  <h1>Build Your CV &amp; Cover Letter</h1>
-  <p>Pick a template, fill 5 short steps, and download a polished document in seconds.</p>
-</div>
+<div class="workspace">
 
-<!-- Template chooser -->
-<div class="container">
-  <div class="tpl-chooser" id="tplChooser" role="radiogroup" aria-label="Choose a template">
-    {% for t in templates %}
-      <label class="tpl-card {% if t.id == default_template_id %}selected{% endif %} {% if not t.ready %}disabled{% endif %}">
-        <input
-          type="radio"
-          name="template_id"
-          value="{{ t.id }}"
-          form="cvForm"
-          {% if t.id == default_template_id %}checked{% endif %}
-          {% if not t.ready %}disabled{% endif %}>
-        <span class="tpl-icon">{{ t.icon }}</span>
-        <span class="tpl-body">
-          <span class="tpl-name">
-            {{ t.name }}
-            {% if not t.ready %}<span class="tpl-soon">Coming soon</span>{% endif %}
-          </span>
-          <span class="tpl-tagline">{{ t.tagline }}</span>
-          <span class="tpl-desc">{{ t.description }}</span>
-        </span>
-      </label>
-    {% endfor %}
-  </div>
-
-  <!-- Draft toolbar -->
-  <div class="draft-bar">
-    <div class="draft-bar-left">
-      <span class="draft-status" id="draftStatus" aria-live="polite">Draft: idle</span>
+  <!-- Left: section navigation -->
+  <aside class="ws-nav" aria-label="CV sections">
+    <div class="ws-nav-inner">
+      <p class="ws-nav-title">Your CV</p>
+      <ol class="step-progress" id="stepProgress">
+        {% for label in sections %}
+          <li class="step-item {% if loop.first %}active{% endif %}" data-progress="{{ loop.index }}">
+            <button type="button" class="step-link" data-goto="{{ loop.index0 }}" {% if loop.first %}aria-current="step"{% endif %}>
+              <span class="step-dot"><span class="step-num">{{ loop.index }}</span><svg class="step-check" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 7.5 5.8 10 11 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              <span class="step-label">{{ label }}</span>
+            </button>
+          </li>
+        {% endfor %}
+      </ol>
+      <div class="draft-bar">
+        <span class="draft-status" id="draftStatus" aria-live="polite">Draft saves as you type</span>
+        <div class="draft-actions">
+          <button type="button" class="btn ghost sm" id="btnLoadSample">Try sample</button>
+          <button type="button" class="btn ghost sm" id="btnClearDraft">Start over</button>
+        </div>
+      </div>
     </div>
-    <div class="draft-bar-right">
-      <button type="button" class="btn sm" id="btnLoadSample">Load sample data</button>
-      <button type="button" class="btn sm" id="btnClearDraft">Clear draft</button>
+  </aside>
+
+  <!-- Center: the CV itself -->
+  <section class="ws-canvas" id="canvas" aria-label="Live preview">
+    <div class="canvas-bar">
+      <div class="doc-tabs" role="tablist" aria-label="Document">
+        <button type="button" class="doc-tab" role="tab" aria-selected="true" data-doc="cv">CV</button>
+        <button type="button" class="doc-tab" role="tab" aria-selected="false" data-doc="letter">Cover letter</button>
+      </div>
+      <div class="tpl-chooser" id="tplChooser" role="radiogroup" aria-label="Template">
+        {% for t in templates %}
+          <label class="tpl-card {% if t.id == default_template_id %}selected{% endif %} {% if not t.ready %}disabled{% endif %}" title="{{ t.tagline }}">
+            <input
+              type="radio"
+              name="template_id"
+              value="{{ t.id }}"
+              form="cvForm"
+              {% if t.id == default_template_id %}checked{% endif %}
+              {% if not t.ready %}disabled{% endif %}>
+            <img class="tpl-thumb" src="{{ url_for('static', filename='img/templates/' ~ t.id ~ '.png') }}" alt="" width="26" height="26">
+            <span class="tpl-name">{{ t.name }}{% if not t.ready %}<span class="tpl-soon">Soon</span>{% endif %}</span>
+          </label>
+        {% endfor %}
+      </div>
+      <button type="button" class="btn sm drawer-close" id="btnClosePreview">Close</button>
     </div>
-  </div>
-</div>
+    <div class="canvas-stage">
+      <article class="paper" id="paper" data-template="{{ default_template_id }}" aria-live="off"></article>
+    </div>
+    <p class="canvas-note">Live preview. Click any part of your CV to edit it.</p>
+  </section>
 
-<!-- Step progress indicator -->
-<div class="step-progress" id="stepProgress">
-  <div class="step-item active" data-progress="1"><div class="step-dot">1</div><span class="step-label">Personal</span></div>
-  <div class="step-item" data-progress="2"><div class="step-dot">2</div><span class="step-label">Education</span></div>
-  <div class="step-item" data-progress="3"><div class="step-dot">3</div><span class="step-label">Experience</span></div>
-  <div class="step-item" data-progress="4"><div class="step-dot">4</div><span class="step-label">Skills</span></div>
-  <div class="step-item" data-progress="5"><div class="step-dot">5</div><span class="step-label">Cover Letter</span></div>
-</div>
-
-<!-- Main form -->
-<div class="container">
+  <!-- Right: what you're editing now -->
+  <section class="ws-panel" aria-label="Edit section">
 <form id="cvForm" method="POST" action="{{ url_for('main.generate') }}" novalidate>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="steps">
@@ -64,7 +75,7 @@
     <div class="step active" data-step="1">
       <div class="form-card">
         <div class="form-card-header">
-          <span class="step-badge">Step 1 of 5</span>
+          <span class="step-badge">Section 1 of 5</span>
           <h2>Personal Information</h2>
           <p>Your contact details will appear at the top of both documents.</p>
         </div>
@@ -91,7 +102,7 @@
     <div class="step" data-step="2">
       <div class="form-card">
         <div class="form-card-header">
-          <span class="step-badge">Step 2 of 5</span>
+          <span class="step-badge">Section 2 of 5</span>
           <h2>Education</h2>
           <p>Add your academic background. You can include multiple degrees.</p>
         </div>
@@ -119,9 +130,9 @@
     <div class="step" data-step="3">
       <div class="form-card">
         <div class="form-card-header">
-          <span class="step-badge">Step 3 of 5</span>
+          <span class="step-badge">Section 3 of 5</span>
           <h2>Work &amp; Leadership Experience</h2>
-          <p>List your roles in reverse chronological order. Click <em>Improve with AI</em> to polish a bullet.</p>
+          <p>Start with your most recent role. Write one achievement per line.</p>
         </div>
         <div class="form-card-body">
           <div id="expList" class="repeat-list"></div>
@@ -147,7 +158,7 @@
     <div class="step" data-step="4">
       <div class="form-card">
         <div class="form-card-header">
-          <span class="step-badge">Step 4 of 5</span>
+          <span class="step-badge">Section 4 of 5</span>
           <h2>Skills, Activities &amp; Interests</h2>
           <p>Highlight what sets you apart beyond your work experience.</p>
         </div>
@@ -193,9 +204,9 @@
     <div class="step" data-step="5">
       <div class="form-card">
         <div class="form-card-header">
-          <span class="step-badge">Step 5 of 5</span>
+          <span class="step-badge">Section 5 of 5</span>
           <h2>Cover Letter</h2>
-          <p>Tell us about the role and company — we'll craft a compelling letter around your story.</p>
+          <p>Tell us about the role and the company, and we'll shape a letter around your story.</p>
         </div>
         <div class="form-card-body">
 
@@ -223,9 +234,6 @@
           <div class="field-group">
             <div class="field-group-label">
               Your Experience Narrative
-              <button type="button" class="btn sm ai-btn" id="btnDraftCover" {% if not llm_enabled %}disabled title="Set LLM_API_KEY to enable"{% endif %}>
-                ✨ Draft with AI
-              </button>
             </div>
             <div class="grid">
               <label class="full">Past Experience Summary<textarea name="past_experience" placeholder="Completed Internships In… / Worked Full-Time In…"></textarea></label>
@@ -246,7 +254,9 @@
           <div class="field-group">
             <div class="field-group-label">Summary Paragraphs</div>
             <div class="grid">
-              <label class="full">Background Summary<textarea name="background_summary" placeholder="Summarize your internships and work experience…"></textarea></label>
+              <label class="full">Background Summary<textarea name="background_summary" placeholder="Summarize your internships and work experience…"></textarea>
+                {% if llm_enabled %}<span class="ai-row"><button type="button" class="ai-chip" id="btnDraftCover">{{ sparkle() }} Help me write this</button></span>{% endif %}
+              </label>
               <label class="full">Skill Summary<textarea name="skill_summary" placeholder="Summarize your key skills…"></textarea></label>
               <label class="full">Firm Track Record<textarea name="firm_track_record" placeholder="Notable transactions or client work at the firm…"></textarea></label>
               <label>Signature (optional)<input name="signature" placeholder="Alexandra Chen"></label>
@@ -263,7 +273,7 @@
               id="btnGenerate">
               <span class="btn-label">
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 10v4h12v-4M8 2v8M5 5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                Generate CV &amp; Cover Letter
+                Finish &amp; download
               </span>
               <span class="btn-spinner" hidden>
                 <span class="spinner" aria-hidden="true"></span>
@@ -277,33 +287,50 @@
 
   </div><!-- /steps -->
 </form>
-</div><!-- /container -->
+  </section>
+
+</div><!-- /workspace -->
+
+<button type="button" class="btn primary preview-toggle" id="btnOpenPreview">Preview my CV</button>
 
 {% endblock %}
 
 {% block scripts %}
 <script>
 const LLM_ENABLED = {{ 'true' if llm_enabled else 'false' }};
+const REDUCE_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const SPARKLE = `{{ sparkle() }}`;
 
 /* ── Step navigation + validation ───────────────────────── */
 const steps = [...document.querySelectorAll('.step')];
 const progressItems = [...document.querySelectorAll('.step-item[data-progress]')];
 let cur = 0;
 
-function updateStep(n) {
+function updateStep(n, opts = {}) {
   n = Math.max(0, Math.min(steps.length - 1, n));
   steps[cur].classList.remove('active');
   cur = n;
   steps[cur].classList.add('active');
 
   progressItems.forEach((item, i) => {
-    item.classList.remove('active', 'completed');
-    const dot = item.querySelector('.step-dot');
-    if (i < cur) { item.classList.add('completed'); dot.textContent = '✓'; }
-    else if (i === cur) { item.classList.add('active'); dot.textContent = i + 1; }
-    else { dot.textContent = i + 1; }
+    item.classList.toggle('active', i === cur);
+    item.querySelector('.step-link').toggleAttribute('aria-current', i === cur);
+    if (i === cur) item.querySelector('.step-link').setAttribute('aria-current', 'step');
   });
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  refreshDone();
+  showDoc(cur === steps.length - 1 ? 'letter' : 'cv');
+  if (!opts.keepScroll) window.scrollTo({ top: 0, behavior: REDUCE_MOTION ? 'auto' : 'smooth' });
+}
+
+/* A section counts as done once it holds something (and its required fields). */
+function stepIsDone(stepEl) {
+  const fields = [...stepEl.querySelectorAll('input, textarea, select')];
+  const required = fields.filter(el => el.hasAttribute('data-required'));
+  if (required.length) return required.every(el => el.value.trim());
+  return fields.some(el => el.value.trim());
+}
+function refreshDone() {
+  progressItems.forEach((item, i) => item.classList.toggle('done', stepIsDone(steps[i])));
 }
 
 function showError(input, msg) {
@@ -352,12 +379,16 @@ document.querySelectorAll('.next').forEach(b =>
 document.querySelectorAll('.back').forEach(b =>
   b.addEventListener('click', () => updateStep(cur - 1))
 );
+document.querySelectorAll('.step-link[data-goto]').forEach(b =>
+  b.addEventListener('click', () => updateStep(+b.dataset.goto))
+);
 
 /* ── Template chooser ───────────────────────────────────── */
 document.querySelectorAll('#tplChooser input[name="template_id"]').forEach(r => {
   r.addEventListener('change', () => {
     document.querySelectorAll('#tplChooser .tpl-card').forEach(c => c.classList.remove('selected'));
     r.closest('.tpl-card').classList.add('selected');
+    switchPaperTemplate(r.value);
   });
 });
 
@@ -440,14 +471,12 @@ function addExp(prefill) {
       <label>Start Date<input name="e_start[]" placeholder="2023/06"></label>
       <label>End Date<input name="e_end[]" placeholder="2023/08 or Present"></label>
       <label class="full">
-        <span class="label-row">
-          Role Description &amp; Key Achievements
-          <button type="button" class="btn sm ai-btn ai-rewrite"
-            ${LLM_ENABLED ? '' : 'disabled title="Set LLM_API_KEY to enable"'}>
-            ✨ Improve with AI
-          </button>
-        </span>
+        Role Description &amp; Key Achievements
         <textarea name="e_summary[]" rows="4" placeholder="• Advised on 3 M&A transactions totaling $2.4B&#10;• Built DCF and LBO models used in board presentations&#10;• Led a team of 4 interns to deliver a sector analysis deck"></textarea>
+        ${LLM_ENABLED ? `<span class="ai-row">
+          <button type="button" class="ai-chip ai-rewrite" data-mode="improve">${SPARKLE} Improve this</button>
+          <button type="button" class="ai-chip ai-rewrite" data-mode="concise">${SPARKLE} Make it more concise</button>
+        </span>` : ''}
       </label>
     </div>`;
   const row = makeRow(`Experience ${count}`, html);
@@ -457,68 +486,227 @@ function addExp(prefill) {
     if (el) el.value = v;
   });
 
-  const aiBtn = row.querySelector('.ai-rewrite');
   const ta = row.querySelector('textarea[name="e_summary[]"]');
-  aiBtn && aiBtn.addEventListener('click', () => rewriteBullet(aiBtn, ta, row));
+  row.querySelectorAll('.ai-rewrite').forEach(btn =>
+    btn.addEventListener('click', () => rewriteBullet(btn, ta, row, btn.dataset.mode)));
   return row;
 }
 
-/* ── AI: rewrite a bullet ───────────────────────────────── */
-async function rewriteBullet(btn, textarea, row) {
+/* ── AI: shared helpers ─────────────────────────────────── */
+function setThinking(btn, on) {
+  btn.disabled = on;
+  btn.classList.toggle('is-thinking', on);
+  btn.setAttribute('aria-busy', String(on));
+}
+
+/* Reveal AI text word by word instead of swapping the field instantly. */
+function revealInto(textarea, text) {
+  return new Promise(resolve => {
+    if (REDUCE_MOTION) {
+      textarea.value = text;
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      return resolve();
+    }
+    const parts = text.split(/(\s+)/);
+    const step = Math.max(1, Math.ceil(parts.length / 60));   // ~60 frames max
+    let i = 0;
+    textarea.classList.add('is-revealing');
+    textarea.value = '';
+    (function tick() {
+      i = Math.min(parts.length, i + step);
+      textarea.value = parts.slice(0, i).join('');
+      textarea.scrollTop = textarea.scrollHeight;
+      if (i < parts.length) return setTimeout(tick, 22);
+      textarea.classList.remove('is-revealing');
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      resolve();
+    })();
+  });
+}
+
+async function postJSON(url, payload) {
+  payload.csrf_token = document.querySelector('[name="csrf_token"]').value;
+  const resp = await fetch(url, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+  return data.result;
+}
+
+/* ── AI: improve or tighten an experience description ───── */
+async function rewriteBullet(btn, textarea, row, mode) {
   const text = (textarea.value || '').trim();
   if (!text) { textarea.focus(); return; }
   const role = row.querySelector('[name="e_title[]"]')?.value?.trim() || '';
-  btn.disabled = true;
-  const orig = btn.textContent;
-  btn.textContent = '✨ Thinking…';
+  setThinking(btn, true);
   try {
-    const resp = await fetch('/api/llm/rewrite-bullet', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, role, csrf_token: document.querySelector('[name="csrf_token"]').value }),
-    });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
-    textarea.value = data.result;
-    textarea.dispatchEvent(new Event('input'));
+    const result = await postJSON('/api/llm/rewrite-bullet', { text, role, mode: mode || 'improve' });
+    await revealInto(textarea, result);
   } catch (e) {
-    alert('AI rewrite failed: ' + e.message);
+    alert('Sorry, the AI could not help just now: ' + e.message);
   } finally {
-    btn.disabled = false;
-    btn.textContent = orig;
+    setThinking(btn, false);
   }
 }
 
-/* ── AI: draft cover letter body ────────────────────────── */
+/* ── AI: draft the cover letter body ────────────────────── */
 document.getElementById('btnDraftCover')?.addEventListener('click', async (ev) => {
   const btn = ev.currentTarget;
-  btn.disabled = true;
-  const orig = btn.textContent;
-  btn.textContent = '✨ Drafting…';
+  const ctx = {};
+  ['position_name', 'company_name', 'referral_source', 'firm_impression',
+   'past_experience', 'experience_theme', 'gained_skills',
+   'project', 'project_result', 'background_summary', 'skill_summary']
+    .forEach(n => ctx[n] = (document.querySelector(`[name="${n}"]`)?.value || '').trim());
+  setThinking(btn, true);
   try {
-    const ctx = {};
-    ['position_name', 'company_name', 'referral_source', 'firm_impression',
-     'past_experience', 'experience_theme', 'gained_skills',
-     'project', 'project_result', 'background_summary', 'skill_summary']
-      .forEach(n => ctx[n] = (document.querySelector(`[name="${n}"]`)?.value || '').trim());
-    ctx.csrf_token = document.querySelector('[name="csrf_token"]').value;
-    const resp = await fetch('/api/llm/draft-cover-letter', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(ctx),
-    });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+    const result = await postJSON('/api/llm/draft-cover-letter', ctx);
     const ta = document.querySelector('[name="background_summary"]');
-    if (ta) {
-      ta.value = data.result;
-      ta.dispatchEvent(new Event('input'));
-    }
+    if (ta) await revealInto(ta, result);
   } catch (e) {
-    alert('AI draft failed: ' + e.message);
+    alert('Sorry, the AI could not help just now: ' + e.message);
   } finally {
-    btn.disabled = false;
-    btn.textContent = orig;
+    setThinking(btn, false);
   }
 });
+
+/* ── Live paper preview ─────────────────────────────────── */
+const paper = document.getElementById('paper');
+let currentDoc = 'cv';
+
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const val = name => (document.querySelector(`#cvForm [name="${name}"]`)?.value || '').trim();
+const vals = name => [...document.querySelectorAll(`#cvForm [name="${name}"]`)].map(el => el.value.trim());
+const ph = (v, fallback) => v ? esc(v) : `<span class="pv-placeholder">${esc(fallback)}</span>`;
+const join = (arr, sep) => arr.filter(Boolean).map(esc).join(sep);
+
+function rows(prefix, keys) {
+  const cols = Object.fromEntries(keys.map(k => [k, vals(`${prefix}_${k}[]`)]));
+  const n = Math.max(0, ...Object.values(cols).map(a => a.length));
+  return Array.from({ length: n }, (_, i) => Object.fromEntries(keys.map(k => [k, cols[k][i] || ''])))
+    .filter(r => Object.values(r).some(Boolean));
+}
+
+function renderCV() {
+  const name = [val('first_name'), val('last_name')].filter(Boolean).join(' ');
+  const contact = join([val('physical_address'), val('phone'), val('email')], ' · ');
+  const edu = rows('ed', ['school', 'city', 'state', 'degree_type', 'field', 'end', 'gpa', 'honors', 'courses']);
+  const exp = rows('e', ['company', 'city', 'state', 'title', 'group', 'start', 'end', 'summary']);
+  const place = r => join([r.city, r.state], ', ');
+
+  const eduHtml = edu.length ? edu.map(r => `
+    <div class="pv-entry">
+      <div class="pv-row"><b>${ph(r.school, 'School')}</b><span>${place(r)}</span></div>
+      <div class="pv-row"><span class="pv-sub">${r.degree_type ? 'Bachelor of ' + esc(r.degree_type) : ''}${r.field ? ' in ' + esc(r.field) : ''}</span><span>${r.end ? 'Expected ' + esc(r.end) : ''}</span></div>
+      ${r.gpa ? `<div class="pv-line"><b>GPA:</b> ${esc(r.gpa)}</div>` : ''}
+      ${r.honors ? `<div class="pv-line"><b>Honors:</b> ${esc(r.honors)}</div>` : ''}
+      ${r.courses ? `<div class="pv-line"><b>Relevant Coursework:</b> ${esc(r.courses)}</div>` : ''}
+    </div>`).join('') : '<div class="pv-entry"><span class="pv-placeholder">Your school, degree and grades</span></div>';
+
+  const expHtml = exp.length ? exp.map(r => {
+    const bullets = r.summary.split('\n').map(l => l.replace(/^[•\-*]\s*/, '').trim()).filter(Boolean);
+    return `
+    <div class="pv-entry">
+      <div class="pv-row"><b>${ph(r.company, 'Company')}</b><span>${place(r)}</span></div>
+      <div class="pv-row"><span class="pv-sub">${join([r.title, r.group], ', ')}</span><span>${join([r.start, r.end], ' – ')}</span></div>
+      ${bullets.length ? `<ul>${bullets.map(b => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}
+    </div>`;
+  }).join('') : '<div class="pv-entry"><span class="pv-placeholder">Your roles and achievements</span></div>';
+
+  const skills = [
+    ['Languages', join([val('languages') && 'Fluent in ' + val('languages'), val('languages_secondary') && 'Conversational in ' + val('languages_secondary')], '; ')],
+    ['Technical Skills', esc(val('technical_skills'))],
+    ['Certifications', esc(val('certifications'))],
+    ['Activities', esc(val('activities'))],
+    ['Interests', esc(val('interests'))],
+  ].filter(([, v]) => v);
+  const skillsHtml = skills.length
+    ? skills.map(([k, v]) => `<div class="pv-line"><b>${k}:</b> ${v}</div>`).join('')
+    : '<span class="pv-placeholder">Skills, languages and interests</span>';
+
+  return `
+    <div data-goto="0">
+      <div class="pv-name">${ph(name, 'Your Name')}</div>
+      <div class="pv-contact">${contact || '<span class="pv-placeholder">Address · Phone · Email</span>'}</div>
+    </div>
+    <div data-goto="1"><div class="pv-h">Education</div>${eduHtml}</div>
+    <div data-goto="2"><div class="pv-h">Experience</div>${expHtml}</div>
+    <div data-goto="3"><div class="pv-h">Skills, Activities &amp; Interests</div>${skillsHtml}</div>`;
+}
+
+function renderLetter() {
+  const name = [val('first_name'), val('last_name')].filter(Boolean).join(' ');
+  const greet = val('recruiter_name')
+    ? `Dear ${esc(val('recruiter_salutation'))} ${esc(val('recruiter_name').split(' ').slice(-1)[0])},`
+    : 'Dear Hiring Manager,';
+  const body = [val('background_summary'), val('skill_summary'), val('firm_track_record')].filter(Boolean);
+  return `
+    <div class="pv-letter">
+      <div data-goto="0">
+        <div class="pv-name" style="font-size:1.6em">${ph(name, 'Your Name')}</div>
+        <div class="pv-contact">${join([val('email'), val('phone')], ' · ') || '<span class="pv-placeholder">Email · Phone</span>'}</div>
+      </div>
+      <div data-goto="4">
+        <p>${ph(val('recruiter_name'), 'Recruiter name')}<br>${esc(val('recruiter_title'))}${val('recruiter_title') ? '<br>' : ''}${ph(val('company_name'), 'Company')}<br>${esc(val('recruiter_address'))}</p>
+        <p>${greet}</p>
+        <p>I am writing to apply for the ${ph(val('position_name'), 'position')} role at ${ph(val('company_name'), 'your company')}.</p>
+        ${body.length ? body.map(b => `<p>${esc(b)}</p>`).join('') : '<p><span class="pv-placeholder">Your story goes here. Fill in the cover letter section, or let AI help with the words.</span></p>'}
+        <p>Sincerely,<br>${esc(val('signature') || name)}</p>
+      </div>
+    </div>`;
+}
+
+let renderQueued = false;
+function renderPaper() {
+  if (renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(() => {
+    renderQueued = false;
+    paper.innerHTML = currentDoc === 'letter' ? renderLetter() : renderCV();
+  });
+}
+
+function showDoc(doc) {
+  if (doc === currentDoc) return;
+  currentDoc = doc;
+  document.querySelectorAll('.doc-tab').forEach(t => t.setAttribute('aria-selected', String(t.dataset.doc === doc)));
+  crossfade(renderPaper);
+}
+
+function crossfade(change) {
+  if (REDUCE_MOTION) { change(); return; }
+  paper.classList.add('is-switching');
+  setTimeout(() => { change(); requestAnimationFrame(() => paper.classList.remove('is-switching')); }, 200);
+}
+
+function switchPaperTemplate(id) {
+  if (paper.dataset.template === id) return;
+  crossfade(() => { paper.dataset.template = id; });
+}
+
+document.querySelectorAll('.doc-tab').forEach(t => t.addEventListener('click', () => showDoc(t.dataset.doc)));
+paper.addEventListener('click', e => {
+  const target = e.target.closest('[data-goto]');
+  if (!target) return;
+  updateStep(+target.dataset.goto, { keepScroll: true });
+  closePreview();
+});
+document.getElementById('cvForm').addEventListener('input', () => { renderPaper(); refreshDone(); });
+document.getElementById('cvForm').addEventListener('click', e => {
+  if (e.target.closest('.icon-btn.remove')) setTimeout(() => { renderPaper(); refreshDone(); }, 0);
+});
+
+/* ── Preview drawer (tablet & mobile) ───────────────────── */
+const canvasEl = document.getElementById('canvas');
+function openPreview() { canvasEl.classList.add('is-open'); document.body.classList.add('preview-open'); renderPaper(); }
+function closePreview() { canvasEl.classList.remove('is-open'); document.body.classList.remove('preview-open'); }
+document.addEventListener('click', e => {
+  if (document.body.classList.contains('preview-open') && !canvasEl.contains(e.target) && !e.target.closest('#btnOpenPreview')) closePreview();
+});
+document.getElementById('btnOpenPreview').addEventListener('click', openPreview);
+document.getElementById('btnClosePreview').addEventListener('click', closePreview);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closePreview(); });
 
 /* ── localStorage draft ─────────────────────────────────── */
 const DRAFT_KEY = 'cv_builder_draft_v1';
@@ -582,7 +770,7 @@ function saveDraft() {
     try {
       localStorage.setItem(DRAFT_KEY, JSON.stringify(serializeForm()));
       if (statusEl) {
-        statusEl.textContent = 'Draft saved ' + new Date().toLocaleTimeString();
+        statusEl.textContent = 'Saved ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         statusEl.classList.add('saved');
         setTimeout(() => statusEl.classList.remove('saved'), 1200);
       }
@@ -600,7 +788,8 @@ document.getElementById('btnClearDraft').addEventListener('click', () => {
   document.getElementById('eduList').innerHTML = '';
   document.getElementById('expList').innerHTML = '';
   addEdu(); addExp();
-  statusEl.textContent = 'Draft cleared';
+  statusEl.textContent = 'Started over';
+  renderPaper(); refreshDone();
 });
 
 /* ── Sample data ────────────────────────────────────────── */
@@ -661,10 +850,16 @@ document.getElementById('btnLoadSample').addEventListener('click', () => {
   localStorage.setItem(DRAFT_KEY, JSON.stringify(SAMPLE));
   hydrate(SAMPLE);
   saveDraft();
+  renderPaper(); refreshDone();
 });
 
 /* ── Loading state on submit ────────────────────────────── */
-document.getElementById('cvForm').addEventListener('submit', () => {
+document.getElementById('cvForm').addEventListener('submit', (ev) => {
+  if (!validateStep(steps[0])) {
+    ev.preventDefault();
+    updateStep(0);
+    return;
+  }
   const btn = document.getElementById('btnGenerate');
   btn.disabled = true;
   btn.querySelector('.btn-label').hidden = true;
@@ -677,9 +872,17 @@ document.getElementById('cvForm').addEventListener('submit', () => {
   try { snap = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); } catch (_) {}
   if (snap) {
     hydrate(snap);
-    statusEl.textContent = 'Draft restored';
+    statusEl.textContent = 'Welcome back, your draft is restored';
   } else {
     addEdu(); addExp();
+  }
+  refreshDone();
+  renderPaper();
+  // A template picked on the home page wins over the one saved in the draft.
+  const requested = {{ requested_template_id|tojson }};
+  if (requested) {
+    const r = document.querySelector(`input[name="template_id"][value="${requested}"]`);
+    if (r && !r.disabled) { r.checked = true; r.dispatchEvent(new Event('change')); }
   }
 })();
 </script>

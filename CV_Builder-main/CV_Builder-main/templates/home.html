@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+
+{% macro sparkle() -%}
+<svg class="sparkle" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0c.4 3.9 2.6 6.4 8 8-5.4 1.6-7.6 4.1-8 8-.4-3.9-2.6-6.4-8-8 5.4-1.6 7.6-4.1 8-8Z"/></svg>
+{%- endmacro %}
+
+{% block body_class %}home{% endblock %}
+
+{% block content %}
+
+<!-- Hero -->
+<section class="hero">
+  <div class="container wide hero-inner">
+    <div class="hero-copy">
+      <h1 data-reveal style="--i:0">Build a CV that <em>feels like you.</em></h1>
+      <p class="hero-sub" data-reveal style="--i:1">Choose a template, add your experience, and let AI help with the words.</p>
+      <div class="hero-actions" data-reveal style="--i:2">
+        <a class="btn primary lg" href="{{ url_for('main.build') }}">Create my CV <span class="arrow" aria-hidden="true">→</span></a>
+        <a class="btn ghost lg" href="#templates">Explore templates</a>
+      </div>
+      <ul class="hero-points" data-reveal style="--i:3">
+        <li>Free to use</li>
+        <li>No account needed</li>
+        <li>Matching cover letter</li>
+      </ul>
+    </div>
+    <div class="paper-stack" aria-hidden="true" data-reveal style="--i:2">
+      {% for t in templates[:3] %}
+        <div class="paper-sheet s{{ loop.index }}">
+          <img src="{{ url_for('static', filename='img/templates/' ~ t.id ~ '.png') }}" alt="" width="640" height="828">
+        </div>
+      {% endfor %}
+      {% if llm_enabled %}
+        <div class="paper-note">{{ sparkle() }} Improved 3 bullet points</div>
+      {% else %}
+        <div class="paper-note">{{ sparkle() }} Your draft saves as you type</div>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<!-- Curated templates -->
+<section class="section" id="templates" style="padding-top: 48px;">
+  <div class="container wide">
+    <div class="tpl-head">
+      <div class="section-head" data-reveal>
+        <span class="eyebrow">Templates</span>
+        <h2>Start with a style you like.</h2>
+        <p>Each one comes with a matching cover letter, and you can switch any time.</p>
+      </div>
+      <div class="pills" role="group" aria-label="Filter templates" data-filter-for="tplTrack" data-reveal style="--i:1">
+        <button type="button" class="pill" data-cat="all" aria-pressed="true">All</button>
+        {% for cat in templates|map(attribute='category')|unique %}
+          <button type="button" class="pill" data-cat="{{ cat }}" aria-pressed="false">{{ cat }}</button>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="carousel" id="tplTrack" data-carousel>
+      {% for t in templates %}
+        <a class="tpl-card-lg" href="{{ url_for('main.build', template=t.id) }}" data-cat="{{ t.category }}" data-reveal style="--i:{{ loop.index0 }}">
+          <span class="tpl-card-thumb">
+            <img src="{{ url_for('static', filename='img/templates/' ~ t.id ~ '.png') }}" alt="Preview of the {{ t.name }} CV template" width="640" height="828" loading="lazy" draggable="false">
+            <span class="tpl-card-cta btn primary sm">Use this style</span>
+          </span>
+          <span class="tpl-card-meta">
+            <span>
+              <span class="tpl-card-name">{{ t.name }}</span>
+              <span class="tpl-card-desc">{{ t.tagline }}</span>
+            </span>
+            <span class="tag">{{ t.category }}</span>
+          </span>
+        </a>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- How it works -->
+<section class="section how" id="how">
+  <div class="container wide">
+    <div class="section-head center" data-reveal>
+      <span class="eyebrow">How it works</span>
+      <h2>Three calm steps.</h2>
+    </div>
+    <div class="how-grid">
+      <div class="how-step" data-reveal style="--i:0">
+        <div class="mini" aria-hidden="true">
+          <div class="mini-sheets">
+            <div class="mini-sheet"><i></i><i></i><i style="width:80%"></i><i></i><i style="width:70%"></i></div>
+            <div class="mini-sheet"><i></i><i></i><i style="width:75%"></i><i></i><i style="width:60%"></i></div>
+            <div class="mini-sheet"><i></i><i></i><i style="width:85%"></i><i></i><i style="width:65%"></i></div>
+          </div>
+        </div>
+        <span class="how-num">01</span>
+        <h3>Pick your style</h3>
+        <p>Choose the layout that suits your field. You can change your mind later.</p>
+      </div>
+      <div class="how-step" data-reveal style="--i:1">
+        <div class="mini" aria-hidden="true">
+          <div class="mini-form">
+            <div class="mini-field"></div>
+            <div class="mini-field"></div>
+            <div class="mini-field tall"></div>
+            {% if llm_enabled %}<span class="mini-ai">{{ sparkle() }} Improve this</span>{% endif %}
+          </div>
+        </div>
+        <span class="how-num">02</span>
+        <h3>Add your experience</h3>
+        <p>Fill in short sections and watch your CV take shape as you type.</p>
+      </div>
+      <div class="how-step" data-reveal style="--i:2">
+        <div class="mini" aria-hidden="true">
+          <div class="mini-doc">
+            <div class="mini-sheet"><i></i><i></i><i style="width:80%"></i><i></i><i style="width:70%"></i><i></i></div>
+            <div class="mini-dl"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          </div>
+        </div>
+        <span class="how-num">03</span>
+        <h3>Download your CV</h3>
+        <p>Get your CV and cover letter as Word files, ready to send.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="section" id="faq">
+  <div class="container">
+    <div class="section-head center" data-reveal>
+      <span class="eyebrow">Questions</span>
+      <h2>Good to know.</h2>
+    </div>
+    <div class="faq">
+      {% set faqs = [
+        ("Is CV Builders free?", "Yes. You can build and download your CV and cover letter without paying or creating an account."),
+        ("Which template should I choose?", "Finance suits banking, consulting and private equity. Tech suits software, product and data roles. Generic works for everything else. You can switch templates in the editor without losing what you've typed."),
+        ("What file formats do I get?", "You always get editable Word (.docx) files. When PDF export is available you'll also see PDF downloads; otherwise open the Word file and use Save as PDF."),
+        ("Is my information saved?", "Your draft is stored only in your own browser so you can come back to it. Documents are generated on the fly and are not kept on our server."),
+        ("Can I make a CV with no work experience?", "Yes. Lead with your education, then add clubs, volunteering, projects and part-time jobs in the experience section."),
+      ] %}
+      {% for q, a in faqs %}
+        <details data-reveal style="--i:{{ loop.index0 }}">
+          <summary>{{ q }}<span class="faq-icon" aria-hidden="true"></span></summary>
+          <div class="faq-body"><p>{{ a }}</p></div>
+        </details>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- Closing CTA -->
+<section class="section" style="padding-top: 0;">
+  <div class="container wide">
+    <div class="cta-soft" data-reveal>
+      <div>
+        <h2>Ready when you are.</h2>
+        <p>Go from a blank page to a finished CV in a few minutes.</p>
+      </div>
+      <a class="btn primary lg" href="{{ url_for('main.build') }}">Create my CV <span class="arrow" aria-hidden="true">→</span></a>
+    </div>
+  </div>
+</section>
+
+{% endblock %}

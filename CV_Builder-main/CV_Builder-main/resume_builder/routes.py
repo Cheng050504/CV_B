@@ -58,9 +58,21 @@ def _build(form):
 @bp.route("/")
 def index():
     return render_template(
+        "home.html",
+        templates=list_templates(),
+        llm_enabled=llm.is_enabled(),
+    )
+
+
+@bp.route("/build")
+def build():
+    requested = request.args.get("template")
+    tpl = get_template(requested)
+    return render_template(
         "form.html",
         templates=list_templates(),
-        default_template_id=DEFAULT_TEMPLATE_ID,
+        default_template_id=tpl.id,
+        requested_template_id=tpl.id if requested == tpl.id else None,
         llm_enabled=llm.is_enabled(),
     )
 
@@ -120,12 +132,15 @@ def api_rewrite_bullet():
     data = request.get_json(silent=True) or {}
     text = (data.get("text") or "").strip()
     role = (data.get("role") or "").strip() or None
+    mode = (data.get("mode") or "improve").strip()
+    if mode not in llm.REWRITE_MODES:
+        return jsonify({"error": "Unknown mode"}), 400
     if not text:
         return jsonify({"error": "Empty input"}), 400
     if len(text) > 4000:
         return jsonify({"error": "Input too long (max 4000 chars)"}), 400
     try:
-        out = llm.rewrite_bullet(text, role_context=role)
+        out = llm.rewrite_bullet(text, role_context=role, mode=mode)
     except llm.LLMError as e:
         return jsonify({"error": str(e)}), 502
     return jsonify({"result": out})

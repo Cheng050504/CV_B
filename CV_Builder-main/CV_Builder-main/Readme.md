@@ -50,7 +50,7 @@ It's also a deliberately minimal full-stack sample that shows:
         │                      Flask app                         │
         │                                                        │
         │   routes.py          services/docx_renderer.py         │
-        │   ─ /                ─ replace_in_runs_preserve()      │
+        │   ─ /  /build        ─ replace_in_runs_preserve()      │
         │   ─ /generate        ─ materialize_experiences()       │
         │   ─ /preview         ─ build_documents()               │
         │   ─ /api/llm/*                                         │
