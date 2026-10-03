@@ -317,8 +317,8 @@
       <div class="cv-body"><div class="cv-main cv-letter-body">
         <p class="cv-letter-date">${esc(date)}</p>
         <p class="cv-letter-to">${gh(l.recipient, 'Recipient name')}${l.recipientTitle ? '<br>' + esc(l.recipientTitle) : ''}<br>${gh(l.company, 'Company')}${l.address ? '<br>' + esc(l.address) : ''}</p>
-        ${l.role ? `<p class="cv-letter-re"><strong>Re: ${esc(l.role)}</strong></p>` : ''}
-        <p>Dear ${l.recipient ? esc(l.recipient.trim()) : 'Hiring Manager'},</p>
+        ${l.role ? `<p class="cv-letter-re"><strong>${esc(l.reLabel || 'Re:')} ${esc(l.role)}</strong></p>` : ''}
+        <p>${esc(l.greet || 'Dear')} ${l.recipient ? esc(l.recipient.trim()) : esc(l.anyone || 'Hiring Manager')},</p>
         ${paras.length ? paras.map(t => `<p>${esc(t)}</p>`).join('') : (ghost ? '<p class="cv-ghost">Your letter goes here. Write it yourself, or let AI draft it from your CV.</p>' : '')}
         <p>${esc(l.signoff || 'Kind regards,')}<br>${esc(name)}</p>
       </div></div>

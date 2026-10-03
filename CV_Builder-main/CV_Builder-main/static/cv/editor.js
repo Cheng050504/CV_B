@@ -720,6 +720,10 @@
       });
     });
     ['role', 'body', 'signoff', 'recipientTitle'].forEach(k => put(`l.${k}`, c.letter[k]));
+    // The letter's fixed words, so a translated letter doesn't keep "Dear" and "Re:" in English.
+    put('l.greet', c.letter.greet || 'Dear');
+    put('l.anyone', c.letter.anyone || 'Hiring Manager');
+    if (c.letter.role) put('l.reLabel', c.letter.reLabel || 'Re:');
     return out;
   }
 
