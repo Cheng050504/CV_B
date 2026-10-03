@@ -521,6 +521,8 @@ def _parse_section(kind: str, lines: List[str]) -> List[Dict[str, str]]:
             extra = others[1:]
             if extra:
                 desc = "\n".join(extra + ([desc] if desc else []))
+            if not org and role:
+                role, org = _split_role_org(role)
             if not org and "," in loc and loc.split(",", 1)[1].strip().lower() not in COUNTRIES \
                     and not re.fullmatch(r"[A-Z]{2,3}", loc.split(",", 1)[1].strip()):
                 org, loc = (x.strip() for x in loc.split(",", 1))  # "Siemens, Munich"
@@ -529,6 +531,26 @@ def _parse_section(kind: str, lines: List[str]) -> List[Dict[str, str]]:
                 item["name"] = item.pop("role")
             items.append(item)
     return [i for i in items if any(str(v).strip() for v in i.values())]
+
+
+DEPARTMENT = re.compile(r"\b(research|marketing|sales|finance|operations|engineering|technology|design|product|strategy|"
+                        r"risk|audit|tax|legal|hr|human resources|it|support|team|department|division|desk|banking|"
+                        r"markets|analytics|data|development|communications|equities|credit|trading)\b", re.I)
+
+
+def _split_role_org(role: str):
+    """'Software Engineer at Google' or 'Software Engineer, Google' -> (role, org).
+
+    A comma is only split when the part after it isn't a team or another job
+    title, so 'Summer Analyst, Equity Research' stays one role."""
+    m = re.match(r"^(.+?)\s+(?:at|@)\s+(.+)$", role)
+    if m and ROLE_WORDS.search(m.group(1)):
+        return m.group(1).strip(), m.group(2).strip()
+    if role.count(",") == 1:
+        a, b = (x.strip() for x in role.split(","))
+        if a and b and ROLE_WORDS.search(a) and not ROLE_WORDS.search(b) and not DEPARTMENT.search(b):
+            return a, b
+    return role, ""
 
 
 # ---------------------------------------------------------------------------

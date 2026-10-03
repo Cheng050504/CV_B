@@ -504,3 +504,25 @@ Dupont J. A study of things. Nature, 2021.
     assert [i["name"] for i in _section(cv, "skills")["items"]] == ["Java", "Python", "SQL (Postgres)", "React"]
     assert not any(s["type"] == "languages" for s in cv["sections"])
     assert _section(cv, "custom")["title"] == "Publications"
+
+
+@pytest.mark.parametrize("head,role,org", [
+    ("Software Engineer, Google", "Software Engineer", "Google"),
+    ("Data Analyst at Monzo", "Data Analyst", "Monzo"),
+    ("Summer Analyst, Equity Research", "Summer Analyst, Equity Research", ""),
+])
+def test_import_splits_role_and_company_on_one_line(head, role, org):
+    from resume_builder.services import cv_import
+    text = f"Jane Doe\njane@example.com\n\nExperience\n{head}\nJan 2020 - Present\n• Built a reporting tool"
+    cv = cv_import.normalize(cv_import.heuristic_parse(text))
+    job = _section(cv, "experience")["items"][0]
+    assert (job["role"], job["org"]) == (role, org)
+
+
+def test_docx_letter_uses_translated_greeting(client):
+    cv = _cv()
+    cv["letter"].update({"greet": "Estimado/a", "anyone": "responsable de selección", "reLabel": "Asunto:"})
+    r = client.post("/api/export/docx", json={"cv": cv, "doc": "letter"}, headers={"X-CSRF-Token": _token(client)})
+    assert r.status_code == 200
+    text = "\n".join(p.text for p in Document(io.BytesIO(r.data)).paragraphs)
+    assert "Asunto: Analyst" in text and "Estimado/a responsable de selección," in text and "Dear" not in text
