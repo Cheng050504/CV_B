@@ -54,47 +54,133 @@ def extract_text(filename: str, data: bytes) -> str:
     elif name.endswith(".docx") or data[:2] == b"PK":
         text = _docx_text(data)
     elif name.endswith((".txt", ".md")):
-        text = data.decode("utf-8", errors="replace")
+        text = data.decode("utf-8-sig", errors="replace")
     else:
         raise ImportError_("Upload a PDF, Word (.docx) or text file.")
-    text = text.replace("\r", "\n").replace(" ", " ")
-    text = re.sub(r"[ \t]+", " ", text)
+    text = text.replace("\r", "\n").replace("\ufeff", "")
+    text = re.sub(r"[^\S\n]+", " ", text)  # any run of spaces, tabs, nbsp, ideographic spaces…
     text = re.sub(r"\n\s*\n\s*\n+", "\n\n", text).strip()
     if len(text) < 30:
         raise ImportError_("We couldn't find any text in that file. If it's a scanned image, try the Word version.")
     return text[:MAX_TEXT]
 
 
+MAX_PAGE_CONTENT = 500_000  # bytes of decoded drawing instructions; real CV pages use well under 100 KB
+
+
 def _pdf_text(data: bytes) -> str:
     try:
         from pypdf import PdfReader
         reader = PdfReader(io.BytesIO(data))
-        return "\n".join((page.extract_text() or "") for page in reader.pages[:6])
+        parts: List[str] = []
+        size = work = 0
+        for page in reader.pages[:6]:
+            # Text extraction slows down sharply on huge pages, so skip the
+            # pages no real CV has and stop once there is enough text.
+            c = page.get_contents()
+            n = len(c.get_data()) if c is not None else 0
+            if n > MAX_PAGE_CONTENT or work + n > 2 * MAX_PAGE_CONTENT:
+                continue
+            work += n
+            parts.append(page.extract_text() or "")
+            size += len(parts[-1])
+            if size >= MAX_TEXT:
+                break
+        return "\n".join(parts)
     except Exception as e:  # pypdf raises many types for broken files
         raise ImportError_("That PDF couldn't be read.") from e
 
 
+W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+MC_FALLBACK = "{http://schemas.openxmlformats.org/markup-compatibility/2006}Fallback"
+MAX_DOCX_PART = 3 * 1024 * 1024  # unpacked size of document.xml; real CVs are a few hundred KB
+
+
 def _docx_text(data: bytes) -> str:
+    """Read the words of a .docx in reading order: page header, then the body
+    (paragraphs, tables and text boxes where they sit). Reads the XML
+    directly, with size and count limits, so odd files stay cheap."""
     try:
-        from docx import Document
-        with zipfile.ZipFile(io.BytesIO(data)) as z:  # refuse files that unpack to something huge
-            if sum(i.file_size for i in z.infolist()) > 60 * 1024 * 1024:
+        from lxml import etree
+        parser = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False)
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            names = ["word/document.xml"] + sorted(n for n in z.namelist() if re.fullmatch(r"word/header\d*\.xml", n))[:3]
+            if any(z.getinfo(n).file_size > MAX_DOCX_PART for n in names):
                 raise ImportError_("That Word file is too large to read.")
-        doc = Document(io.BytesIO(data))
+            roots = [etree.fromstring(z.read(n), parser) for n in names]
+        budget = [5000]  # paragraphs and table rows we are willing to visit
+        head: List[str] = []
+        for root in roots[1:]:  # headers often hold the name and contact details
+            _docx_blocks(root, head, budget, 0)
+        out = list(dict.fromkeys(l for l in head if l.strip()))  # one copy per page type is common
+        body = roots[0].find(W + "body")
+        if body is not None:
+            _docx_blocks(body, out, budget, 0)
     except ImportError_:
         raise
     except Exception as e:
         raise ImportError_("That Word file couldn't be read. Save it as .docx and try again.") from e
-    lines: List[str] = [p.text for p in doc.paragraphs]
-    for table in doc.tables:
-        for row in table.rows:
-            cells = []
-            for cell in row.cells:
-                t = cell.text.strip()
-                if t and t not in cells:
-                    cells.append(t)
-            lines.append("  |  ".join(cells))
-    return "\n".join(lines)
+    return "\n".join(out)
+
+
+def _docx_blocks(el, out: List[str], budget: List[int], depth: int) -> None:
+    for child in el:
+        if budget[0] <= 0:
+            return
+        tag = child.tag
+        if tag == W + "p":
+            budget[0] -= 1
+            text, boxes = _docx_para(child)
+            ppr = child.find(W + "pPr")
+            style = ppr.find(W + "pStyle") if ppr is not None else None
+            listed = ppr is not None and (ppr.find(W + "numPr") is not None or
+                                          (style is not None and (style.get(W + "val") or "").startswith("List")))
+            if listed and text.strip() and not _heading_type(text.strip()):
+                text = "• " + text.strip()
+            out.append(text)
+            if depth < 3:
+                for box in boxes:
+                    _docx_blocks(box, out, budget, depth + 1)
+        elif tag == W + "tbl" and depth < 3:
+            for tr in child.findall(W + "tr")[:200]:
+                budget[0] -= 1
+                cells = []
+                for tc in tr.findall(W + "tc")[:20]:
+                    sub: List[str] = []
+                    _docx_blocks(tc, sub, budget, depth + 1)
+                    cells.append([l for l in sub if l.strip()])
+                if all(len(c) <= 1 for c in cells):  # one line per cell: keep the row together
+                    row = []
+                    for c in cells:
+                        if c and c[0].strip() not in row:
+                            row.append(c[0].strip())
+                    out.append("  |  ".join(row))
+                else:
+                    for c in cells:
+                        out.extend(c)
+        elif tag in (W + "sdt", W + "sdtContent", W + "customXml", W + "smartTag") and depth < 3:
+            _docx_blocks(child, out, budget, depth)
+
+
+def _docx_para(p):
+    """A paragraph's own text, plus the text boxes anchored in it."""
+    parts: List[str] = []
+    boxes = []
+    stack = list(reversed(p))
+    while stack:
+        el = stack.pop()
+        tag = el.tag
+        if tag == W + "t":
+            parts.append(el.text or "")
+        elif tag == W + "tab":
+            parts.append(" ")
+        elif tag in (W + "br", W + "cr"):
+            parts.append("\n")
+        elif tag == W + "txbxContent":
+            boxes.append(el)
+        elif tag != MC_FALLBACK:  # the fallback repeats the text box for old Word versions
+            stack.extend(reversed(el))
+    return "".join(parts), boxes
 
 
 # ---------------------------------------------------------------------------
@@ -102,15 +188,16 @@ def _docx_text(data: bytes) -> str:
 # ---------------------------------------------------------------------------
 
 EMAIL = re.compile(r"[\w.+\-]+@[\w\-]+(\.[\w\-]+)+")
-PHONE = re.compile(r"(\+?\d[\d\s().\-]{7,}\d)")
+PHONE = re.compile(r"(\+?\(?\d[\d \t().\-]{7,}\d)")
 LINKEDIN = re.compile(r"(?:https?://)?(?:[a-z]{2,3}\.)?linkedin\.com/[^\s|,]+", re.I)
 WEBSITE = re.compile(r"(?:https?://)?(?:www\.)?[a-z0-9\-]+\.(?:com|io|dev|me|net|org|co\.uk|co|app|site|xyz)(?:/[^\s|,]*)?", re.I)
-BULLET = re.compile(r"^\s*[•●▪◦‣∙·\-–—*»>]\s*")
-MONTH = r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?"
+# Includes the private-use glyphs Word's Symbol font leaves in exported PDFs.
+BULLET = re.compile(r"^\s*[•●▪■◦○‣∙·➢➤✓❖\uf0b7\uf0a7\uf076\uf0d8\uf0fc\-–—*»>]\s*")
+MONTH = r"(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?|spring|summer|fall|autumn|winter)"
 DATE = rf"(?:{MONTH}\s*\d{{4}}|\d{{1,2}}/\d{{4}}|\d{{4}}/\d{{1,2}}|(?:19|20)\d{{2}})"
 RANGE = re.compile(rf"({DATE})\s*(?:-|–|—|to|until)\s*({DATE}|present|current|now|today)|(?:expected\s+)?({DATE})", re.I)
 LEVELS = ["Expert", "Advanced", "Intermediate", "Beginner", "Native", "Fluent", "Basic"]
-LEVEL_RUN = re.compile(r"\s*(.+?)\s*[(\-–:]?\s*\b(" + "|".join(LEVELS) + r")\b\)?\s*(?:,|;|$|(?=\s))", re.I)
+LEVEL_SPLIT = re.compile(r"\b(" + "|".join(LEVELS) + r")\b\)?", re.I)
 ROLE_WORDS = re.compile(
     r"\b(analyst|engineer|manager|intern|internship|president|director|assistant|developer|consultant|associate|officer|"
     r"lead|head|designer|specialist|coordinator|teacher|tutor|scientist|researcher|member|volunteer|founder|co-founder|"
@@ -119,16 +206,21 @@ ROLE_WORDS = re.compile(
     r"supervisor|instructor|fellow|student|mentor|organiser|organizer|treasurer|secretary)\b", re.I)
 ORG_WORDS = re.compile(r"\b(university|college|school|institute|academy|ltd|limited|inc|llc|plc|group|bank|society|club|"
                        r"foundation|company|corp|corporation|council|association|agency|partners|capital|labs?)\b", re.I)
-DEGREE = re.compile(r"\b(B\.?Sc|B\.?A|BEng|MEng|M\.?Sc|M\.?A|MBA|Ph\.?D|LLB|LLM|Bachelor|Master|Doctor|Diploma|Certificate|"
+DEGREE = re.compile(r"\b(B\.?Sc|B\.?A|BEng|MEng|M\.?Sc|M\.?A|MBA|Ph\.?D|LLB|LLM|B\.?S\.?|M\.?S\.?|BBA|BFA|A\.?B\.?|S\.?B\.?|"
+                    r"Bachelor|Master|Doctor|Diploma|Certificate|"
                     r"A[- ]?Levels?|GCSE|IB|High School|Associate|Foundation Year|HND|BTEC)\b", re.I)
 GRADE = re.compile(r"(GPA[:\s]*[\d.]+(?:\s*/\s*[\d.]+)?|First[- ]Class( Honours)?|Upper Second|2[:.]1|2[:.]2|Distinction|Merit|"
                    r"Summa Cum Laude|Magna Cum Laude|Cum Laude|\b[A-D]\*?[A-D]\*?[A-D]\*?\b)", re.I)
+COUNTRIES = {"uk", "usa", "us", "united kingdom", "united states", "england", "scotland", "wales", "ireland", "germany",
+             "france", "spain", "italy", "netherlands", "india", "china", "japan", "canada", "australia", "singapore"}
+PROG_LANGS = {"python", "java", "javascript", "typescript", "c", "c++", "c#", "go", "golang", "rust", "ruby", "php", "r",
+              "sql", "swift", "kotlin", "scala", "html", "css", "matlab", "bash", "perl", "vba", "dart"}
 LOCATION = re.compile(r"^(remote|hybrid|[A-Z][a-zÀ-ÿ'.]+(?:[ \-][A-Z][a-zÀ-ÿ'.]+)?(?:,\s*[A-Z][A-Za-zÀ-ÿ .]+)?)$")
 
 HEADINGS = [
     ("contact", r"contact( details| information| info)?|personal (details|information)"),
     ("summary", r"(professional |personal |career )?(summary|profile|about me|about|objective|introduction)"),
-    ("experience", r"(work |professional |relevant |employment |career )?(experience|history|employment)( history)?|work (&|and) leadership experience|leadership experience"),
+    ("experience", r"(work |professional |relevant |employment |career |research |teaching |industry |additional |other )?(experience|history|employment)( history)?|work (&|and) leadership experience|leadership experience"),
     ("education", r"education( (&|and) training)?|academic (background|qualifications)|qualifications"),
     ("projects", r"(personal |selected |key |academic )?projects"),
     ("volunteering", r"volunteer(ing)?( experience| work)?|community (work|involvement)"),
@@ -137,6 +229,8 @@ HEADINGS = [
     ("certifications", r"certifications?|certificates?|licen[cs]es( (&|and) certifications)?|courses|training"),
     ("awards", r"awards?( (&|and) honou?rs)?|honou?rs( (&|and) awards)?|achievements|scholarships"),
     ("interests", r"interests|hobbies( (&|and) interests)?|activities"),
+    ("custom", r"publications|presentations|conferences|talks|patents|grants|references|(professional )?memberships|"
+               r"affiliations|research( interests)?|teaching|leadership|extra-?curricular( activities)?|positions of responsibility"),
 ]
 _HEAD_RE = [(t, re.compile(rf"^\s*(?:{p})\s*:?\s*$", re.I)) for t, p in HEADINGS]
 LABELS = [  # "Label: a, b" lines inside a combined skills block
@@ -157,13 +251,14 @@ def _heading_type(line: str) -> Optional[str]:
 
 
 def _is_contact(line: str) -> bool:
-    return bool(EMAIL.search(line) or LINKEDIN.search(line) or re.fullmatch(r"[+\d][\d\s().\-]{7,}", line.strip()))
+    phone = re.fullmatch(r"[+(\d][\d\s().\-]{7,}", line.strip()) and not RANGE.fullmatch(line.strip())  # "2019 - 2021" is a date
+    return bool(EMAIL.search(line) or LINKEDIN.search(line) or phone)
 
 
 def heuristic_parse(text: str) -> Dict[str, object]:
     # Real CV words and lines are short; capping them keeps the patterns below fast on odd files.
     text = re.sub(r"\S{120,}", lambda m: m.group(0)[:120], text[:MAX_TEXT])
-    lines = [l.strip()[:1500] for l in text.split("\n")]
+    lines = [re.sub(r"\s+", " ", l).strip()[:1500] for l in text.split("\n")]
     lines = [l for l in lines if l]
     personal: Dict[str, str] = {}
 
@@ -175,12 +270,18 @@ def heuristic_parse(text: str) -> Dict[str, object]:
             personal["email"] = m.group(0)
         if "linkedin" not in personal and (m := LINKEDIN.search(src)):
             personal["linkedin"] = re.sub(r"^https?://(www\.)?", "", m.group(0))
-        if "phone" not in personal:
-            for cand in PHONE.findall(src):
-                digits = re.sub(r"\D", "", cand)
-                if 8 <= len(digits) <= 15 and not RANGE.fullmatch(cand.strip()):
-                    personal["phone"] = re.sub(r"\s+", " ", cand.strip())
-                    break
+    # The phone is looked for near the top and in a Contact block only: numbers in the body are grades and dates.
+    contact, in_contact = [], False
+    for l in lines[head_n:]:
+        t = _heading_type(l)
+        in_contact = t == "contact" if t else in_contact
+        if in_contact and not t:
+            contact.append(l)
+    for cand in PHONE.findall(top + "\n" + "\n".join(contact)):
+        digits = re.sub(r"\D", "", cand)
+        if 8 <= len(digits) <= 15 and not RANGE.fullmatch(cand.strip()) and not re.search(r"\d{1,2}[./]\d{1,2}[./]\d{4}", cand):
+            personal["phone"] = re.sub(r"\s+", " ", cand.strip())
+            break
     for m in WEBSITE.finditer(top):
         url = m.group(0)
         if "linkedin" in url.lower() or url in personal.get("email", ""):
@@ -191,13 +292,15 @@ def heuristic_parse(text: str) -> Dict[str, object]:
     header = lines[:head_n]
     name_idx = None
     for i, l in enumerate(header[:6]):
-        if re.fullmatch(r"[A-Za-zÀ-ÿ'’.\- ]{3,50}", l) and 2 <= len(l.split()) <= 4:
+        if re.fullmatch(r"(?i)curriculum vitae|r[eé]sum[eé]|cv", l):
+            continue
+        if 3 <= len(l) <= 50 and all(ch.isalpha() or ch in " '’.-" for ch in l) and 2 <= len(l.split()) <= 4:
             name_idx = i
             break
     if name_idx is not None:
         parts = header[name_idx].split()
         if all(p.isupper() for p in parts):
-            parts = [p.capitalize() for p in parts]
+            parts = [re.sub(r"[^\W\d_]+", lambda m: m.group(0).capitalize(), p) for p in parts]
         personal["firstName"] = " ".join(parts[:-1])
         personal["lastName"] = parts[-1]
         nxt = header[name_idx + 1] if name_idx + 1 < len(header) else ""
@@ -220,7 +323,7 @@ def heuristic_parse(text: str) -> Dict[str, object]:
             title = l.strip(" :")
             cur = {"type": t, "title": title.title() if title.isupper() else title, "lines": []}
             blocks.append(cur)
-        elif cur is not None and not (cur["type"] != "summary" and _is_contact(l)):
+        elif cur is not None and not (cur["type"] != "summary" and _is_contact(l) and not RANGE.fullmatch(l)):
             cur["lines"].append(l)
 
     sections: List[Dict[str, object]] = []
@@ -244,7 +347,7 @@ def _join_wrapped(lines: List[str]) -> List[str]:
     out: List[str] = []
     for l in lines:
         if out and (l[:1] in "(,&" or l[:1].islower() or out[-1].rstrip().endswith((",", "&", "/"))) and not BULLET.match(l):
-            out[-1] = out[-1].rstrip() + " " + l
+            out[-1] = (out[-1].rstrip() + " " + l)[:1500]
         else:
             out.append(l)
     return out
@@ -258,14 +361,20 @@ def _list_items(lines: List[str], kind: str) -> List[Dict[str, str]]:
             l = rx.sub("", l)
         l = re.sub(r"^[A-Za-z &/]{2,30}:\s*", "", l)
         if kind != "interests" and len(re.findall(r"\b(" + "|".join(LEVELS) + r")\b", l, re.I)) >= 2 and not re.search(r"[,;|•]", l):
-            parts = [(m.group(1), m.group(2)) for m in LEVEL_RUN.finditer(l)]
+            # "Python Expert Java Advanced": split on the level words and pair each name with the level after it
+            chunks = LEVEL_SPLIT.split(l)
+            parts = [(chunks[i].strip(" (-–:"), chunks[i + 1]) for i in range(0, len(chunks) - 1, 2)]
+            if chunks[-1].strip():
+                parts.append((chunks[-1], ""))
         else:
             parts = []
             for p in re.split(r"\s*[,;•|·]\s*", l):
                 m = re.match(r"^(.*?)[\s(\-–:]+(" + "|".join(LEVELS) + r")\)?$", p.strip(), re.I)
                 parts.append((m.group(1), m.group(2)) if m else (p, ""))
         for name, level in parts:
-            name = name.strip(" .()")
+            name = name.strip(" .")
+            if name.count("(") != name.count(")"):  # keep "SQL (Postgres)" whole
+                name = name.strip(" .()")
             level = level.capitalize()
             if name and len(name) <= 60 and all(name.lower() != n["name"].lower() for n in names):
                 item = {"name": name}
@@ -285,6 +394,11 @@ def _labelled_lists(lines: List[str]) -> List[Dict[str, object]]:
             if rx.match(l):
                 kind = k
                 break
+        else:
+            if re.match(r"^[A-Za-z &/]{2,30}:", l):  # "Frameworks:", "Developer Tools:"
+                kind = "skills"
+        if kind == "languages" and any(p.strip(" .()").lower() in PROG_LANGS for p in re.split(r"[,;:(]", l)):
+            kind = "skills"  # "Languages: Java, Python" under Technical Skills
         if kind not in groups:
             groups[kind] = []
             order.append(kind)
@@ -343,10 +457,15 @@ def _parse_section(kind: str, lines: List[str]) -> List[Dict[str, str]]:
     entries: List[Dict[str, object]] = []
     cur: Optional[Dict[str, object]] = None
     for l in lines:
-        rest, start, end = _dates(l)
+        # A bullet is always description, even when it mentions a year.
+        rest, start, end = (l, "", "") if BULLET.match(l) else _dates(l)
         dated = bool(start or end)
         heady = dated or _is_heady(l)
-        if heady and (cur is None or cur["desc"] or (dated and (cur["start"] or cur["end"]))):
+        # Education: a school or degree line after a dated head that already has both starts the next entry.
+        next_school = (kind == "education" and heady and not dated and cur is not None and (cur["start"] or cur["end"])
+                       and (DEGREE.search(l) or ORG_WORDS.search(l))
+                       and any(DEGREE.search(h) for h in cur["head"]) and any(ORG_WORDS.search(h) for h in cur["head"]))
+        if heady and (cur is None or cur["desc"] or next_school or (dated and (cur["start"] or cur["end"]))):
             cur = {"head": [], "desc": [], "start": "", "end": ""}
             entries.append(cur)
         elif cur is None:
@@ -369,7 +488,7 @@ def _parse_section(kind: str, lines: List[str]) -> List[Dict[str, str]]:
         desc = "\n".join(e["desc"])[:1500]
         places = [h for h in head if LOCATION.match(h) and not ROLE_WORDS.search(h) and not ORG_WORDS.search(h)
                   and (len(head) > 2 or "," in h or h.lower() in ("remote", "hybrid"))]
-        places.sort(key=lambda h: (len(h.split(",")[0].split()), "," not in h))
+        places.sort(key=lambda h: ("," not in h, len(h.split(",")[0].split())))
         loc = places[0] if places and (len(places[0].split(",")[0].split()) == 1 or "," in places[0]) else ""
         rest = [h for h in head if h != loc]
         if kind == "education":
@@ -381,9 +500,13 @@ def _parse_section(kind: str, lines: List[str]) -> List[Dict[str, str]]:
                     rest[i] = h.replace(gm.group(0), "").strip(" ,·-")
             if not grade and (gm := GRADE.search(desc)) and gm.group(0).lower().startswith(("gpa", "first", "upper", "2")):
                 grade = gm.group(0)
+                desc = "\n".join(d for d in (x.replace(grade, "").strip(" ,·-|") for x in desc.split("\n")) if d)
             rest = [h for h in rest if h]
             degree = next((h for h in rest if DEGREE.search(h)), rest[0] if rest else "")
-            org = next((h for h in rest if h != degree), "")
+            org = next((h for h in rest if h != degree and ORG_WORDS.search(h)), next((h for h in rest if h != degree), ""))
+            extra = [h for h in rest if h not in (degree, org)]
+            if extra:
+                desc = "\n".join(extra + ([desc] if desc else []))
             items.append({"degree": degree, "org": org, "location": loc, "start": e["start"], "end": e["end"], "grade": grade, "description": desc})
         elif kind == "projects":
             name = rest[0] if rest else ""
@@ -398,7 +521,13 @@ def _parse_section(kind: str, lines: List[str]) -> List[Dict[str, str]]:
             extra = others[1:]
             if extra:
                 desc = "\n".join(extra + ([desc] if desc else []))
-            items.append({"role": role, "org": org, "location": loc, "start": e["start"], "end": e["end"], "description": desc})
+            if not org and "," in loc and loc.split(",", 1)[1].strip().lower() not in COUNTRIES \
+                    and not re.fullmatch(r"[A-Z]{2,3}", loc.split(",", 1)[1].strip()):
+                org, loc = (x.strip() for x in loc.split(",", 1))  # "Siemens, Munich"
+            item = {"role": role, "org": org, "location": loc, "start": e["start"], "end": e["end"], "description": desc}
+            if kind == "custom":
+                item["name"] = item.pop("role")
+            items.append(item)
     return [i for i in items if any(str(v).strip() for v in i.values())]
 
 
@@ -410,7 +539,7 @@ def _s(v, limit: int = 200) -> str:
     if v is None:
         return ""
     if isinstance(v, list):
-        v = "\n".join(str(x) for x in v)
+        v = "\n".join(str(x) for x in v if x is not None)
     return str(v).strip()[:limit]
 
 
@@ -420,10 +549,14 @@ def normalize(data: object) -> Dict[str, object]:
     p_in = data.get("personal") if isinstance(data.get("personal"), dict) else {}
     personal = {k: _s(p_in.get(k), 120) for k in PERSONAL_FIELDS}
     sections = []
-    for sec in data.get("sections") or []:
+    raw = data.get("sections")
+    if isinstance(raw, dict):  # {"experience": [...], ...} instead of a list of sections
+        raw = [dict(v, type=k) if isinstance(v, dict) else {"type": k, "items": v} for k, v in raw.items()]
+    for sec in raw if isinstance(raw, list) else []:
         if not isinstance(sec, dict):
             continue
-        kind = sec.get("type") if sec.get("type") in SECTION_FIELDS else "custom"
+        t = sec.get("type")
+        kind = t if isinstance(t, str) and t in SECTION_FIELDS else "custom"
         fields = SECTION_FIELDS[kind]
         items = []
         raw_items = sec.get("items")

@@ -18,18 +18,35 @@
     requirement requirements required responsibilities responsibility responsible right salary skill skills strong successful support
     team teams time today understanding various week weeks work working world year years full part apply us uk london based within
     hours hour hybrid remote office location contract permanent temporary ltd inc llc package bonus competitive pension holiday
-    knowledge hiring hire looking senior junior across every month monthly weekly within plus bonus familiarity exposure background`.split(/\s+/));
+    knowledge hiring hire looking senior junior across every month monthly weekly within plus bonus familiarity exposure background
+    monday tuesday wednesday thursday friday saturday sunday weekend weekends morning mornings afternoon evening evenings
+    january february march april june july august september sept october november december
+    overview description summary duties qualifications qualification criteria details perks reward rewards shift shifts hourly
+    ll re ve don am pm a.m p.m e.g i.e and/or his/her he/she s/he full-time part-time fixed-term`.split(/\s+/));
 
   const norm = s => String(s || '').toLowerCase().replace(/[’']/g, "'");
-  const stem = w => w.replace(/(ies)$/, 'y').replace(/(ing|ed|es|s)$/, '').replace(/e$/, '');
+  // sses -> ss first, and never strip the s of a trailing ss, so process/processes share a stem.
+  const stem = w => w.replace(/sses$/, 'ss').replace(/(ies)$/, 'y').replace(/(ing|ed|es|([^s])s)$/, (m, a, b) => b || '').replace(/e$/, '');
+  const WORD = /\p{L}[\p{L}\p{N}+#./&\-]*[\p{L}\p{N}+#]|\p{L}/gu;
 
   function words(text) {
-    return norm(text).match(/[a-z][a-z0-9+#./&\-]*[a-z0-9+#]|[a-z]/g) || [];
+    return norm(text).match(WORD) || [];
+  }
+
+  /* Is position i the start of a sentence, line or bullet point? (No lookbehind: Safari < 16.4.) */
+  function atStart(raw, i) {
+    let j = i - 1;
+    while (j >= 0 && /[ \t]/.test(raw[j])) j--;
+    if (j < 0 || /[.!?:•\n\r]/.test(raw[j])) return true;
+    if (!/[-*–·▪]/.test(raw[j])) return false;
+    j--;
+    while (j >= 0 && /[ \t]/.test(raw[j])) j--;
+    return j < 0 || /[\n\r]/.test(raw[j]);
   }
 
   function cvText(cv) {
     const p = cv.personal || {};
-    const out = [p.headline];
+    const out = [p.headline, p.location];
     (cv.sections || []).filter(s => !s.hidden).forEach(s => {
       out.push(s.title);
       s.items.forEach(i => Object.keys(i).forEach(k => { if (k !== 'id') out.push(i[k]); }));
@@ -37,19 +54,29 @@
     return out.filter(Boolean).join(' \n ');
   }
 
-  /* Pick the words and two-word phrases that matter in an advert. */
-  function keywords(job) {
-    const raw = String(job || '');
-    const ws = words(raw);
+  /* Pick the words and two-word phrases that matter in an advert.
+     skip: lower-case words to leave out (the employer's name). */
+  function keywords(job, skip) {
+    const raw = String(job || '').replace(/[’']/g, "'");
+    const ws = [], caps = new Set(), forms = new Map();
+    const re = new RegExp(WORD.source, 'gu');
+    let m;
+    while ((m = re.exec(raw))) {
+      const w = norm(m[0]), start = atStart(raw, m.index);
+      ws.push(w);
+      // Capitalised mid-sentence words (Python, Bloomberg, IFRS) are usually tools or names.
+      if (!start && w.length > 1 && /^\p{Lu}/u.test(m[0])) caps.add(w);
+      // Keep the advert's own casing (SQL, Power BI); a sentence-start capital only counts if all caps.
+      if (!start || (w.length > 1 && m[0] === m[0].toUpperCase())) { if (!forms.has(w)) forms.set(w, m[0]); }
+    }
     if (ws.length < 8) return [];
-    // Capitalised mid-sentence words (Python, Bloomberg, IFRS) are usually tools or names.
-    const caps = new Set((raw.match(/(?<![.!?:•\n]\s*|^\s*)\b[A-Z][A-Za-z0-9+#.&]*[A-Za-z0-9+#]\b/g) || []).map(norm));
+    const junk = w => STOP.has(w) || w.length < 2 || /^\d+$/.test(w) || (w.length <= 4 && /[./]/.test(w)) || (skip && skip.has(w));
     const freq = new Map(), bi = new Map();
     ws.forEach((w, i) => {
-      if (STOP.has(w) || w.length < 2 || /^\d+$/.test(w)) return;
+      if (junk(w)) return;
       freq.set(w, (freq.get(w) || 0) + 1);
       const n = ws[i + 1];
-      if (n && !STOP.has(n) && n.length > 1 && !/^\d+$/.test(n)) {
+      if (n && !junk(n)) {
         const k = w + ' ' + n;
         bi.set(k, (bi.get(k) || 0) + 1);
       }
@@ -62,34 +89,44 @@
       if (!inPhrase && (f >= 2 || caps.has(k) || /[+#]/.test(k))) terms.push({ term: k, weight: score(k, f) });
     });
     terms.sort((a, b) => b.weight - a.weight || a.term.localeCompare(b.term));
+    terms.forEach(t => { t.display = t.term.split(' ').map(w => forms.get(w) || w).join(' '); });
     return terms.slice(0, 24);
   }
 
   function has(text, stems, term) {
     const parts = term.split(' ');
-    if (parts.length > 1) return text.includes(term) || parts.every(p => stems.has(stem(p)));
-    return stems.has(stem(term));
+    if (parts.length > 1) return text.includes(term) || text.includes(parts.join('-')) || parts.every(p => stems.has(stem(p)));
+    if (stems.has(stem(term))) return true;
+    const bits = term.split(/[/-]/).filter(Boolean);
+    return bits.length > 1 && bits.every(p => stems.has(stem(p)));
   }
 
+  /* display maps each term to its casing in the advert, e.g. {'power bi': 'Power BI'}. */
   function jobMatch(cv, job) {
-    const terms = keywords(job);
+    const company = words(cv.letter && cv.letter.company).filter(w => !STOP.has(w));
+    const terms = keywords(job, new Set(company));
     if (!terms.length) return null;
     const text = norm(cvText(cv));
-    const stems = new Set(words(text).map(stem));
-    const matched = [], missing = [];
+    const stems = new Set();
+    // Also index the pieces of Excel/VBA or customer-facing, keeping the whole token for node.js and c++.
+    words(text).forEach(w => { stems.add(stem(w)); w.split(/[/-]/).forEach(p => { if (p) stems.add(stem(p)); }); });
+    const matched = [], missing = [], display = {};
     let got = 0, total = 0;
     terms.forEach(t => {
       total += t.weight;
+      display[t.term] = t.display;
       if (has(text, stems, t.term)) { got += t.weight; matched.push(t.term); } else missing.push(t.term);
     });
-    return { score: Math.round(got / total * 100), matched, missing };
+    return { score: Math.round(got / total * 100), matched, missing, display };
   }
 
   /* ── Writing tips ───────────────────────────────────────── */
   const WEAK = /^(responsible for|helped|helping|assisted|assisting|worked on|working on|involved in|tasked with|duties included|participated in|in charge of|did|was)\b/i;
   const PRESENT = /^(manage|lead|develop|build|create|support|work|design|run|handle|oversee|coordinate|maintain|deliver|analyse|analyze|write|prepare|train|teach|sell|serve|assist|help|organise|organize|plan|implement|monitor|review|produce|conduct)s?\b/i;
-  const CLICHE = /\b(hard[- ]working|team player|go[- ]getter|detail[- ]oriented|results[- ]driven|self[- ]starter|think outside the box|synergy|dynamic|passionate)\b/i;
+  const CLICHE = /\b(hard[- ]working|team player|go[- ]getter|detail[- ]oriented|results[- ]driven|self[- ]starter|think outside the box|synergy|dynamic (?:professional|individual)|passionate)\b/i;
   const FIRST = /(^|\s)(i|my|me|i'm|i've)(\s|$|,|\.)/i;
+  // "CFA Level I" or "Phase I" is a numeral, not first person.
+  const firstPerson = l => FIRST.test(' ' + l.replace(/\b(level|phase|type|part|class|grade|tier|stage|series)\s+I\b/gi, '$1') + ' ');
 
   function lint(text, ctx) {
     ctx = ctx || {};
@@ -107,8 +144,8 @@
     const lines = t.split('\n').map(l => l.replace(/^[•\-*]\s*/, '').trim()).filter(Boolean);
     const weak = lines.find(l => WEAK.test(l));
     if (weak) tips.push(`Start with a strong verb instead of “${weak.match(WEAK)[0]}”. Try Led, Built, Cut or Grew.`);
-    if (lines.some(l => FIRST.test(' ' + l + ' '))) tips.push('Leave out “I” and “my”. CVs read better without them.');
-    const ended = ctx.end && !/present|current|now|today/i.test(ctx.end);
+    if (lines.some(firstPerson)) tips.push('Leave out “I” and “my”. CVs read better without them.');
+    const ended = ctx.end && !/present|current|now|today|ongoing|to date|till date|until now/i.test(ctx.end);
     if (ended && lines.some(l => PRESENT.test(l))) tips.push('This role has ended, so use the past tense (Managed, Led, Built).');
     if (ctx.kind === 'achievements' && lines.length >= 2 && lines.filter(l => /\d/.test(l)).length < Math.ceil(lines.length / 2)) {
       tips.push('Add numbers where you can: %, £, people, time saved, rankings.');

@@ -376,7 +376,8 @@ def translate_strings(cfg: Config, strings: Dict[str, str], language: str) -> Di
     language = _clip(language, 40)
     if not language:
         raise LLMError("Choose a language first.")
-    clean = {str(k)[:40]: _clip(v, 2000) for k, v in list(strings.items())[:400] if _clip(v, 1)}
+    # Generous per-value cap (long cover letters); the 16000 total check below is the real limit.
+    clean = {str(k)[:40]: _clip(v, 8000) for k, v in list(strings.items())[:400] if _clip(v, 1)}
     if not clean:
         raise LLMError("There's nothing to translate yet.")
     if sum(len(v) for v in clean.values()) > 16000:
@@ -391,4 +392,4 @@ def translate_strings(cfg: Config, strings: Dict[str, str], language: str) -> Di
     data = _json_from(raw)
     if not isinstance(data, dict):
         raise LLMError("The AI didn't return a readable result. Try again.")
-    return {k: _clip(data.get(k), 2000) for k in clean if isinstance(data.get(k), str) and data.get(k).strip()}
+    return {k: _clip(data.get(k), 16000) for k in clean if isinstance(data.get(k), str) and data.get(k).strip()}

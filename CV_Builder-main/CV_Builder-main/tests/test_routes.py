@@ -350,3 +350,157 @@ def test_templates_say_which_are_ats_friendly(client):
     assert not tpls["vertical"].ats
     assert not any(t.ats for t in tpls.values() if t.photo or t.layout != "single")
     assert '"ats": true' in client.get("/build").get_data(as_text=True)
+
+
+# --- CV import: hostile files stay cheap, odd parses never 500 ---------------
+
+def _timed_upload(client, name, data, **headers):
+    import time
+    t = time.perf_counter()
+    r = _upload(client, name, data, **headers)
+    assert time.perf_counter() - t < 2, f"import of {name} took too long"
+    return r
+
+
+def _docx_with_body(body_xml):
+    import zipfile
+    buf = io.BytesIO()
+    Document().save(buf)
+    out = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(buf.getvalue())) as zin, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zout:
+        for info in zin.infolist():
+            data = zin.read(info.filename)
+            if info.filename == "word/document.xml":
+                data = (b'<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+                        b"<w:body>" + body_xml + b"</w:body></w:document>")
+            zout.writestr(info, data)
+    return out.getvalue()
+
+
+def _pdf_with_content(content):
+    import zlib
+    stream = zlib.compress(content)
+    objs = [b"<< /Type /Catalog /Pages 2 0 R >>", b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+            b"<< /Length %d /Filter /FlateDecode >>\nstream\n" % len(stream) + stream + b"\nendstream",
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
+    pdf, offsets = b"%PDF-1.4\n", []
+    for i, o in enumerate(objs):
+        offsets.append(len(pdf))
+        pdf += b"%d 0 obj\n" % (i + 1) + o + b"\nendobj\n"
+    xref = len(pdf)
+    pdf += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objs) + 1) + b"".join(b"%010d 00000 n \n" % o for o in offsets)
+    return pdf + b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (len(objs) + 1, xref)
+
+
+@pytest.mark.parametrize("text", [
+    "John Smith\njohn@example.com\nSkills\nPython Expert Java Expert a" + "　" * 3000 + "b",
+    "John Smith\njohn@example.com\nSkills\nPython Expert Java Advanced\n" + "\n".join(["more stuff here"] * 1200),
+])
+def test_import_skill_runs_stay_fast(client, monkeypatch, text):
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    r = _timed_upload(client, "cv.txt", text.encode())
+    assert r.status_code == 200 and r.get_json()["cv"]["personal"]["lastName"] == "Smith"
+
+
+def test_import_skips_huge_pdf_pages(client, monkeypatch):
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    pdf = _pdf_with_content(b"BT /F1 12 Tf 72 700 Td (hello world) Tj ET\n" * 100000)  # 4 MB of drawing on one page
+    r = _timed_upload(client, "cv.pdf", pdf)
+    assert r.status_code == 400 and r.get_json()["error"]
+
+
+@pytest.mark.parametrize("body", [
+    b"<w:p/>" * 1_700_000,  # tiny zip, 10 MB of empty paragraphs
+    b"<w:tbl><w:tr><w:tc><w:tcPr><w:vMerge w:val='restart'/></w:tcPr><w:p><w:r><w:t>Jane Smith jane@example.com</w:t></w:r></w:p>"
+    b"</w:tc></w:tr>" + b"<w:tr><w:tc><w:tcPr><w:vMerge/></w:tcPr><w:p/></w:tc></w:tr>" * 1000 + b"</w:tbl>",
+])
+def test_import_hostile_word_files_are_cheap(client, monkeypatch, body):
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    r = _timed_upload(client, "cv.docx", _docx_with_body(body))
+    assert r.status_code in (200, 400) and r.is_json
+
+
+def test_import_unexpected_reader_error_is_a_friendly_400(client, monkeypatch):
+    from resume_builder.services import cv_import
+
+    def boom(*a, **k):
+        raise RecursionError("deep")
+    monkeypatch.setattr(cv_import, "extract_text", boom)
+    r = _upload(client, "cv.txt", SAMPLE_CV_TEXT.encode())
+    assert r.status_code == 400 and r.get_json()["error"]
+
+
+@pytest.mark.parametrize("reply", ['{"sections": [{"type": ["experience"]}]}', '{"sections": 1}',
+                                   '{"personal": {"firstName": "Jo"}, "sections": [null, "x"]}'])
+def test_import_odd_ai_replies_fall_back(client, monkeypatch, reply):
+    monkeypatch.setattr(llm, "_chat", lambda *a, **k: reply)
+    r = _upload(client, "cv.txt", SAMPLE_CV_TEXT.encode(), **{k: v for k, v in _byok(client).items() if k != "X-CSRF-Token"})
+    body = r.get_json()
+    assert r.status_code == 200 and body["usedAi"] is False and body["cv"]["personal"]["lastName"] == "Patel"
+
+
+def test_import_word_keeps_reading_order(client, monkeypatch):
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    doc = Document()
+    doc.sections[0].header.paragraphs[0].text = "Daniel Kim"
+    doc.add_paragraph("daniel.kim@example.com")
+    doc.add_paragraph("Experience")
+    row = doc.add_table(rows=1, cols=2).rows[0]
+    row.cells[0].text, row.cells[1].text = "Product Manager | Spotify", "Jan 2021 - Present"
+    doc.add_paragraph("Shipped Playlist Search To 200M Users", style="List Bullet")
+    doc.add_paragraph("Skills")
+    doc.add_paragraph("SQL, Figma")
+    buf = io.BytesIO()
+    doc.save(buf)
+    cv = _upload(client, "cv.docx", buf.getvalue()).get_json()["cv"]
+    assert (cv["personal"]["firstName"], cv["personal"]["lastName"]) == ("Daniel", "Kim")
+    job = _section(cv, "experience")["items"][0]
+    assert (job["role"], job["org"], job["start"], job["end"]) == ("Product Manager", "Spotify", "Jan 2021", "Present")
+    assert job["description"] == "Shipped Playlist Search To 200M Users"
+    assert [i["name"] for i in _section(cv, "skills")["items"]] == ["SQL", "Figma"]
+
+
+def test_import_basic_reader_edge_cases(client, monkeypatch):
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    text = """﻿CURRICULUM VITAE
+JEAN-PIERRE DUPONT
+(212) 555-0199 | jp@example.com
+Experience
+Senior Software Engineer | Stripe | San Francisco, CA | Mar 2020 - Present
+ Promoted to team lead in 2021
+ Shipped v2.0 in March 2020
+Analyst
+Barclays, London
+2018 - 2019
+• Built credit models
+Research Assistant
+UCL
+Fall 2017 - Spring 2018
+• Ran lab studies
+Education
+BSc Mathematics
+University of Leeds
+2015 - 2018
+GPA: 3.9/4.0
+Technical Skills
+Languages: Java, Python, SQL (Postgres)
+Frameworks: React
+Publications
+Dupont J. A study of things. Nature, 2021.
+"""
+    cv = _upload(client, "cv.txt", text.encode()).get_json()["cv"]
+    p = cv["personal"]
+    assert (p["firstName"], p["lastName"], p["phone"]) == ("Jean-Pierre", "Dupont", "(212) 555-0199")
+    jobs = _section(cv, "experience")["items"]
+    assert [(j["role"], j["org"], j["location"], j["start"], j["end"]) for j in jobs] == [
+        ("Senior Software Engineer", "Stripe", "San Francisco, CA", "Mar 2020", "Present"),
+        ("Analyst", "Barclays", "London", "2018", "2019"),
+        ("Research Assistant", "UCL", "", "Fall 2017", "Spring 2018"),
+    ]
+    assert jobs[0]["description"].splitlines() == ["Promoted to team lead in 2021", "Shipped v2.0 in March 2020"]
+    edu = _section(cv, "education")["items"][0]
+    assert (edu["grade"], edu["description"]) == ("GPA: 3.9/4.0", "")
+    assert [i["name"] for i in _section(cv, "skills")["items"]] == ["Java", "Python", "SQL (Postgres)", "React"]
+    assert not any(s["type"] == "languages" for s in cv["sections"])
+    assert _section(cv, "custom")["title"] == "Publications"

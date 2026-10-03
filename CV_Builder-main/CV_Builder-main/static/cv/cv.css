@@ -622,6 +622,8 @@ ul.cv-desc li::marker { color: var(--accent); }
 .cv--vertical .cv-headline { color: rgba(255,255,255,0.8); margin: 0; white-space: nowrap; text-transform: uppercase; letter-spacing: 0.14em; font-size: 0.8em; }
 .cv--vertical .cv-contact { grid-column: 2; grid-row: 1; padding: 52px 52px 0 44px; margin-bottom: 26px; flex-basis: auto; align-self: start; }
 .cv--vertical .cv-body { grid-column: 2; grid-row: 2; padding: 0 52px 48px 44px; }
+/* With no contact details the body is the first thing in the column, so it takes the top padding. */
+.cv--vertical .cv-head:not(:has(.cv-contact)) + .cv-body { padding-top: 52px; }
 .cv--vertical .cv-h { border-bottom-width: 1px; color: var(--ink); }
 .cv--vertical .cv-h span { box-shadow: inset 0 -0.45em 0 var(--tint); }
 

@@ -554,21 +554,24 @@
           <p class="hint">${r.missing.length ? `Your CV doesn't mention ${r.missing.length} of the advert's key ${r.missing.length === 1 ? 'term' : 'terms'} yet.` : 'Your CV covers the key terms in this advert.'}</p></div>
       </div>
       ${r.missing.length ? `<div class="field-group-label">Missing <span class="hint-inline">Tap one to add it to your skills</span></div>
-        <div class="kw-list">${r.missing.map(k => `<button type="button" class="kw kw-miss" data-add-kw="${esc(k)}">+ ${esc(k)}</button>`).join('')}</div>` : ''}
+        <div class="kw-list">${r.missing.map(k => { const d = (r.display && r.display[k]) || k; return `<button type="button" class="kw kw-miss" data-add-kw="${esc(d)}">+ ${esc(d)}</button>`; }).join('')}</div>` : ''}
       ${r.matched.length ? `<div class="field-group-label">Already on your CV</div>
-        <div class="kw-list">${r.matched.map(k => `<span class="kw kw-ok">✓ ${esc(k)}</span>`).join('')}</div>` : ''}
+        <div class="kw-list">${r.matched.map(k => `<span class="kw kw-ok">✓ ${esc((r.display && r.display[k]) || k)}</span>`).join('')}</div>` : ''}
       <p class="hint">Only add what's true for you. The strongest CVs also use these words in their achievements, not just in the skills list.</p>`;
   }
 
+  /* Returns 'added', 'shown' (it was already there but the section was hidden) or false. */
   function addSkill(name) {
     const c = cv();
     let sec = c.sections.find(s => s.type === 'skills');
     if (!sec) { sec = E.newSection('skills'); c.sections.push(sec); }
+    const wasHidden = sec.hidden;
     sec.hidden = false;
-    if (sec.items.some(i => String(i.name || '').toLowerCase() === name.toLowerCase())) return false;
+    if (sec.items.some(i => String(i.name || '').toLowerCase() === name.toLowerCase())) return wasHidden ? 'shown' : false;
     sec.items = sec.items.filter(i => String(i.name || '').trim());
-    sec.items.push({ id: E.uid(), name: name.replace(/^./, ch => ch.toUpperCase()), level: '' });
-    return true;
+    // Keep the advert's casing (SQL, Power BI); only capitalise an all-lower-case term.
+    sec.items.push({ id: E.uid(), name: name === name.toLowerCase() ? name.replace(/^./, ch => ch.toUpperCase()) : name, level: '' });
+    return 'added';
   }
 
   /* ── Applications and tailored copies ──────────────────── */
@@ -622,7 +625,7 @@
       copy.id = E.uid();
       copy.name = [d.role, d.company].filter(Boolean).join(' – ').slice(0, 60);
       copy.updatedAt = Date.now();
-      copy.job = d.job.slice(0, 6000);
+      copy.job = d.job.slice(0, 20000);
       copy.letter = Object.assign(copy.letter || {}, { role: d.role || copy.letter.role, company: d.company || copy.letter.company, recipient: '', recipientTitle: '', address: '' });
       app.cvId = copy.id;
       store.apps.push(app);
@@ -678,8 +681,10 @@
       toast(data.usedAi ? 'Imported. Check each section and make it yours.' : 'Imported with the basic reader. Check job titles and companies in each section.');
       if (data.note) setTimeout(() => toast(data.note), 3400);
     } catch (err) {
-      status.innerHTML = `<p class="ai-msg bad">${esc('Sorry, that file could not be imported: ' + err.message)}</p>`;
-      $('#dropzone').classList.remove('is-busy');
+      const msg = 'Sorry, that file could not be imported: ' + err.message;
+      // The user may have moved to another panel while it was reading.
+      if (status.isConnected) status.innerHTML = `<p class="ai-msg bad">${esc(msg)}</p>`; else toast(msg);
+      const z = $('#dropzone'); if (z) z.classList.remove('is-busy');
     }
   }
 
@@ -704,8 +709,9 @@
   function translatable(c) {
     const out = {}, put = (k, v) => { if (String(v || '').trim()) out[k] = v; };
     put('p.headline', c.personal.headline);
-    const nameTypes = ['skills', 'interests', 'certifications', 'awards', 'projects', 'custom'];
-    c.sections.forEach(s => {
+    const nameTypes = ['skills', 'languages', 'interests', 'certifications', 'awards', 'projects', 'custom'];
+    // Hidden sections are not sent, so hiding one really does shorten the request.
+    c.sections.filter(s => !s.hidden).forEach(s => {
       put(`s.${s.id}`, s.title);
       s.items.forEach(i => {
         ['role', 'degree', 'description', 'text', 'grade'].forEach(k => put(`i.${s.id}.${i.id}.${k}`, i[k]));
@@ -746,17 +752,21 @@
   }
 
   /* ── Fit to one page ───────────────────────────────────── */
+  /* Height as a share of page one's printable area. printPdf keeps a 12mm bottom margin
+     (13mm here, as 1123px is a little over 297mm), so a full-height page would spill over. */
+  const PRINT_MARGIN = 13 * 96 / 25.4;
   function measurePages(c) {
     const box = $('#measureBox');
     box.innerHTML = E.render(c, META);
     const page = E.PAGE[c.style.page] || E.PAGE.A4;
-    const h = box.firstElementChild.scrollHeight;
-    return h / page.h;
+    const el = box.firstElementChild;
+    el.style.minHeight = '0'; // measure the content, not the page-high minimum
+    return el.scrollHeight / (page.h - PRINT_MARGIN);
   }
 
   function fitOnePage() {
-    const c = cv(), st = c.style, before = Object.assign({}, st);
-    if (measurePages(c) <= 1.003) { toast('It already fits on one page.'); return; }
+    const c = cv(), st = c.style, id = c.id, before = { spacing: st.spacing, size: st.size, fit: st.fit || 1 };
+    if (measurePages(c) <= 1) { toast('It already fits on one page.'); return; }
     const sizes = ['l', 'm', 's'], spacings = ['relaxed', 'normal', 'compact'];
     const si = Math.max(0, sizes.indexOf(st.size)), pi = Math.max(0, spacings.indexOf(st.spacing));
     const tries = [];
@@ -764,12 +774,18 @@
     tries.sort((a, b) => a.cost - b.cost);
     [0.95, 0.9, 0.86, 0.82].forEach(f => tries.push({ spacing: 'compact', size: 's', fit: f }));
     const test = JSON.parse(JSON.stringify(c));
-    const hit = tries.find(t => { Object.assign(test.style, { spacing: t.spacing, size: t.size, fit: t.fit }); return measurePages(test) <= 1.003; });
+    const hit = tries.find(t => { Object.assign(test.style, { spacing: t.spacing, size: t.size, fit: t.fit }); return measurePages(test) <= 1; });
     $('#measureBox').innerHTML = '';
     if (!hit) { toast('Still over one page at the smallest setting. Try hiding a section or trimming older roles.'); return; }
     Object.assign(st, { spacing: hit.spacing, size: hit.size, fit: hit.fit });
     changed({ panel: active === 'design' });
-    toast('Fitted to one page', 'Undo', () => { Object.assign(cv().style, before); changed({ panel: active === 'design' }); });
+    toast('Fitted to one page', 'Undo', () => {
+      // The user may have switched CV since; undo the CV that was fitted.
+      const fitted = store.cvs[id];
+      if (!fitted) return;
+      Object.assign(fitted.style, before);
+      if (id === store.currentId) changed({ panel: active === 'design' }); else persist();
+    });
   }
 
   /* ── Panel events (delegated) ──────────────────────────── */
@@ -778,7 +794,7 @@
     if (t.id === 'aiKey') { aiDraft.key = t.value; return; }
     if (t.id === 'aiModel') { aiDraft.model = t.value; return; }
     if (t.id === 'aiRemember') { aiDraft.remember = t.checked; return; }
-    if (t.hasAttribute('data-job')) { c.job = t.value.slice(0, 6000); changed(); const r = $('#matchResult', panel); if (r) r.innerHTML = matchResult(); return; }
+    if (t.hasAttribute('data-job')) { c.job = t.value.slice(0, 20000); changed(); const r = $('#matchResult', panel); if (r) r.innerHTML = matchResult(); return; }
     if (t.dataset.app) {
       const a = store.apps.find(x => x.id === t.dataset.app);
       if (a) { a[t.dataset.k] = t.value; persist(); if (t.dataset.k === 'status') renderPanel({ keepScroll: true }); }
@@ -841,7 +857,7 @@
     }
     if (b.dataset.miniMode) { miniMode = b.dataset.miniMode; renderPanel({ keepScroll: true }); return; }
     if (b.hasAttribute('data-fit')) { fitOnePage(); return; }
-    if (b.dataset.addKw) { if (addSkill(b.dataset.addKw)) { changed({ nav: true }); toast(`Added “${b.dataset.addKw}” to your skills`); } const r = $('#matchResult', panel); if (r) r.innerHTML = matchResult(); return; }
+    if (b.dataset.addKw) { const res = addSkill(b.dataset.addKw); if (res) { changed({ nav: true }); toast(res === 'shown' ? 'Skills section shown again' : `Added “${b.dataset.addKw}” to your skills`); } const r = $('#matchResult', panel); if (r) r.innerHTML = matchResult(); return; }
     if (b.dataset.tailorCreate) { createTailored(b.dataset.tailorCreate); return; }
     if (b.dataset.appOpen) { switchTo(b.dataset.appOpen); return; }
     if (b.dataset.appDel) {
@@ -925,7 +941,7 @@
     toast(s.hidden ? `${s.title} hidden from your CV` : `${s.title} is back on your CV`);
   }
 
-  panel.addEventListener('change', e => { if (e.target.id === 'cvFile') importFile(e.target.files[0]); });
+  panel.addEventListener('change', e => { if (e.target.id === 'cvFile') { const f = e.target.files[0]; e.target.value = ''; importFile(f); } });
   panel.addEventListener('dragover', e => { const z = e.target.closest('#dropzone'); if (z) { e.preventDefault(); z.classList.add('is-over'); } });
   panel.addEventListener('dragleave', e => { const z = e.target.closest('#dropzone'); if (z) z.classList.remove('is-over'); });
   panel.addEventListener('drop', e => { const z = e.target.closest('#dropzone'); if (!z) return; e.preventDefault(); z.classList.remove('is-over'); importFile(e.dataTransfer.files[0]); });

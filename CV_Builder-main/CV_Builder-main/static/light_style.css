@@ -783,8 +783,9 @@ body.editor .nav-cta { display: none; }
 .panel-head h2 { font-size: 1.5rem; margin-top: 6px; letter-spacing: -0.02em; }
 .panel-head p { color: var(--muted); font-size: 14.5px; margin-top: 6px; }
 .panel-body { padding: 18px 28px 8px; }
-.panel-foot { display: flex; align-items: center; gap: 10px; padding: 14px 28px 26px; }
+.panel-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 14px 28px 26px; }
 .panel-foot .spacer { flex: 1; }
+.panel-foot .btn.primary { margin-left: auto; } /* stays right-aligned when the footer wraps on phones */
 .hint { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
 
 /* Template picker */
@@ -868,7 +869,9 @@ textarea.is-revealing { box-shadow: inset 0 0 0 1.5px var(--accent), 0 0 0 4px v
   body > *:not(#printRoot) { display: none !important; }
   body { background: #fff !important; }
   #printRoot { display: block !important; }
-  #printRoot .cv { box-shadow: none; width: auto !important; min-height: 0 !important; }
+  /* Keep the Frame template's box-shadow frame. Fill page one's printable height (13mm under
+     the page, see measurePages) so full-height strips and sidebars reach the bottom. */
+  #printRoot .cv { width: auto !important; min-height: calc(var(--page-h) - 13mm) !important; }
   #printRoot .cv-sec, #printRoot .cv-item { break-inside: avoid-page; }
   #printRoot .cv-sec--experience, #printRoot .cv-sec--projects { break-inside: auto; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }

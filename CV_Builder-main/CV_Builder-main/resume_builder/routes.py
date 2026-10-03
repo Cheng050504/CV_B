@@ -231,6 +231,9 @@ def api_import():
         text = cv_import.extract_text(upload.filename, data)
     except cv_import.ImportError_ as e:
         return jsonify({"error": str(e)}), 400
+    except Exception:  # odd files can trip the PDF and Word libraries in ways we don't foresee
+        log.exception("CV import: reading the file failed")
+        return jsonify({"error": "That file couldn't be read. Try saving it as a PDF or .docx again."}), 400
 
     note = ""
     try:
@@ -240,9 +243,17 @@ def api_import():
     if cfg is not None:
         try:
             parsed = cv_import.normalize(llm.parse_cv(cfg, text))
-            if parsed["sections"] or any(parsed["personal"].values()):
+            if parsed["sections"]:
                 return jsonify({"cv": parsed, "usedAi": True})
+            note = "AI didn't find any sections, so we used the basic reader."
         except (llm.LLMError, cv_import.ImportError_) as e:
             note = f"AI couldn't read it ({e}), so we used the basic reader."
-    parsed = cv_import.normalize(cv_import.heuristic_parse(text))
+        except Exception:  # an oddly shaped reply shouldn't lose the import
+            log.exception("CV import: AI reply couldn't be used")
+            note = "AI couldn't read it, so we used the basic reader."
+    try:
+        parsed = cv_import.normalize(cv_import.heuristic_parse(text))
+    except Exception:
+        log.exception("CV import: basic reader failed")
+        return jsonify({"error": "We couldn't make sense of that CV. Try the Word or PDF version."}), 400
     return jsonify({"cv": parsed, "usedAi": False, "note": note})
