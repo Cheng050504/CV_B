@@ -78,6 +78,8 @@
   const PAGE = { A4: { w: 794, h: 1123 }, Letter: { w: 816, h: 1056 } };
   const SIZES = { s: 12.5, m: 13.5, l: 14.5 };
   const SPACING = { compact: 1.35, normal: 1.5, relaxed: 1.65 };
+  /* style.fit (0.8 to 1) is set by "Fit to one page" to squeeze a little further. */
+  const fontPx = st => +((SIZES[st.size] || SIZES.m) * (st.fit >= 0.8 && st.fit < 1 ? st.fit : 1)).toFixed(2);
 
   /* ── Data helpers ──────────────────────────────────────── */
   function newSection(type, title) {
@@ -275,7 +277,7 @@
       `--accent:${safeColor(st.accent)}`,
       `--font-body:${font.body}`,
       `--font-head:${font.head}`,
-      `--fs:${SIZES[st.size] || SIZES.m}px`,
+      `--fs:${fontPx(st)}px`,
       `--lh:${SPACING[st.spacing] || SPACING.normal}`,
       `--page-w:${page.w}px`,
       `--page-h:${page.h}px`,
@@ -303,7 +305,7 @@
     const paras = String(l.body || '').split(/\n\s*\n/).map(t => t.trim()).filter(Boolean);
     const date = new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
     const style = [`--accent:${safeColor(st.accent)}`, `--font-body:${font.body}`, `--font-head:${font.head}`,
-      `--fs:${SIZES[st.size] || SIZES.m}px`, `--lh:${SPACING[st.spacing] || SPACING.normal}`, `--page-w:${page.w}px`, `--page-h:${page.h}px`].join(';');
+      `--fs:${fontPx(st)}px`, `--lh:${SPACING[st.spacing] || SPACING.normal}`, `--page-w:${page.w}px`, `--page-h:${page.h}px`].join(';');
     return `<div class="cv cv-letter cv--${esc(meta.id || st.template)} cv--single" style="${style}">
       <header class="cv-head">
         <div class="cv-id">

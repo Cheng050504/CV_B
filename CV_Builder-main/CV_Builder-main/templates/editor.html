@@ -64,6 +64,7 @@
         <div class="paper-doc" id="paper"></div>
       </div>
       <span class="page-count" id="pageCount" hidden></span>
+      <button type="button" class="fit-chip" id="btnFit" hidden>Fit to one page</button>
     </div>
     <p class="canvas-note">Click any part of your CV to edit it.</p>
   </section>
@@ -80,6 +81,7 @@
 <input type="hidden" id="csrfToken" value="{{ csrf_token() }}">
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 <div id="printRoot" aria-hidden="true"></div>
+<div id="measureBox" aria-hidden="true"></div>
 <style id="pageRule"></style>
 {% endblock %}
 
@@ -91,5 +93,6 @@
     requestedTemplate: {{ requested_template_id|tojson }},
   };
 </script>
+<script src="{{ url_for('static', filename='cv/insights.js') }}"></script>
 <script src="{{ url_for('static', filename='cv/editor.js') }}"></script>
 {% endblock %}
