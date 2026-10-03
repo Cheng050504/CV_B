@@ -258,6 +258,7 @@
       : '';
 
     const header = `<header class="cv-head">
+        <span class="cv-mono" aria-hidden="true">${esc(initials(p))}</span>
         ${photo}
         <div class="cv-id">
           <h1 class="cv-name">${name}</h1>
@@ -280,7 +281,7 @@
       `--page-h:${page.h}px`,
     ].join(';');
 
-    return `<div class="cv cv--${esc(meta.id || st.template)} cv--${esc(meta.layout || 'single')}" style="${style}">
+    return `<div class="cv cv--${esc(meta.id || st.template)} cv--${esc(meta.layout || 'single')}${meta.org_first ? ' cv--orgfirst' : ''}" style="${style}">
       ${header}
       <div class="cv-body">
         <div class="cv-main">${sectionsHtml(main, ghost, meta)}</div>

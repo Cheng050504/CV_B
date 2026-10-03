@@ -42,6 +42,22 @@ def test_has_many_templates_across_categories():
     assert len({t.category for t in tpls}) >= 5
 
 
+def test_favicon(client):
+    r = client.get("/favicon.ico")
+    assert r.status_code == 200 and r.mimetype == "image/png"
+    html = client.get("/").get_data(as_text=True)
+    assert "img/favicon.svg" in html and "apple-touch-icon" in html
+
+
+def test_template_ids_unique_and_styled():
+    import pathlib
+    css = (pathlib.Path(__file__).resolve().parents[1] / "static/cv/cv.css").read_text()
+    ids = [t.id for t in list_templates()]
+    assert len(ids) == len(set(ids)) >= 45
+    missing = [i for i in ids if f".cv--{i}" not in css]
+    assert not missing, missing
+
+
 def test_original_formats_are_back():
     by_id = {t.id: t for t in list_templates()}
     for tid in ("finance", "generic", "techline"):
