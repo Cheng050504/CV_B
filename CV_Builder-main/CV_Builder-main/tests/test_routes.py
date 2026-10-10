@@ -526,3 +526,20 @@ def test_docx_letter_uses_translated_greeting(client):
     assert r.status_code == 200
     text = "\n".join(p.text for p in Document(io.BytesIO(r.data)).paragraphs)
     assert "Asunto: Analyst" in text and "Estimado/a responsable de selección," in text and "Dear" not in text
+
+
+def test_pages_have_share_tags_and_canonical(client):
+    html = client.get("/build?template=clean").get_data(as_text=True)
+    assert '<link rel="canonical" href="https://cvbuilders.org/build">' in html
+    assert 'property="og:image" content="https://cvbuilders.org/static/img/og.png"' in html
+    assert "twitter:card" in html and "CV editor | CV Builders" in html
+    assert client.get("/static/img/og.png").status_code == 200
+
+
+def test_robots_and_sitemap(client):
+    robots = client.get("/robots.txt")
+    assert robots.mimetype == "text/plain" and "Disallow: /api/" in robots.get_data(as_text=True)
+    assert "Sitemap: https://cvbuilders.org/sitemap.xml" in robots.get_data(as_text=True)
+    sm = client.get("/sitemap.xml")
+    assert sm.mimetype == "application/xml"
+    assert all(f"<loc>https://cvbuilders.org{p}</loc>" in sm.get_data(as_text=True) for p in ("/", "/templates", "/build"))
