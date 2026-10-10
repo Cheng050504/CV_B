@@ -47,6 +47,27 @@ def _cv_meta():
     }
 
 
+SITE_URL = os.environ.get("SITE_URL", "https://cvbuilders.org").rstrip("/")
+
+
+@bp.app_context_processor
+def _site():
+    return {"site_url": SITE_URL}
+
+
+@bp.route("/robots.txt")
+def robots():
+    body = f"User-agent: *\nAllow: /\nDisallow: /api/\n\nSitemap: {SITE_URL}/sitemap.xml\n"
+    return current_app.response_class(body, mimetype="text/plain")
+
+
+@bp.route("/sitemap.xml")
+def sitemap():
+    urls = "".join(f"<url><loc>{SITE_URL}{p}</loc></url>" for p in ("/", "/templates", "/build"))
+    body = f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{urls}</urlset>'
+    return current_app.response_class(body, mimetype="application/xml")
+
+
 @bp.route("/")
 def index():
     return render_template(
@@ -73,6 +94,8 @@ def gallery():
         categories=CATEGORIES,
         cv_meta=_cv_meta(),
         title="CV templates | CV Builders",
+        meta_description=f"Browse {len(list_templates())} free CV templates: professional, modern, minimal, creative and classic. "
+                         "Each one is editable and ATS-friendly options are marked.",
     )
 
 
@@ -87,7 +110,9 @@ def build():
         requested_template_id=tpl.id if requested == tpl.id else None,
         llm_enabled=llm.is_enabled(),
         ai_providers=llm.public_providers(),
-        title="Editor | CV Builders",
+        title="CV editor | CV Builders",
+        meta_description="Write your CV and cover letter with a live preview. Import an existing CV, fit it to one page "
+                         "and check it against a job advert. Free, no sign-up.",
     )
 
 
