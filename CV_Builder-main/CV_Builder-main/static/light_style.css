@@ -671,7 +671,8 @@ body.editor .nav-cta { display: none; }
 
 /* Template gallery page */
 .page-title { font-size: clamp(2.2rem, 4.4vw, 3.4rem); line-height: 1.08; letter-spacing: -0.035em; }
-.tpl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 28px; }
+.tpl-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px 36px; }
+@media (max-width: 640px) { .tpl-grid { grid-template-columns: minmax(0, 1fr); gap: 28px; } }
 .tpl-grid .tpl-card-lg { flex: none; }
 .see-all { display: flex; justify-content: center; margin-top: 8px; }
 .tpl-card-thumb .cv-mini { border-radius: 0; }
